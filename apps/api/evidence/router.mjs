@@ -19,12 +19,13 @@ export function createEvidenceRouter({workspace,uploadDir,send,jsonBody,readBody
     active.set(job.id,{controller,promise});return job;
   }
   return {
+    store,
     async close(){closing=true;for(const a of active.values())a.controller.abort();await Promise.allSettled([...active.values()].map(a=>a.promise));},
     async handle(req,res,path,method){
       if(!path.startsWith('/api/evidence/'))return false;
       if(closing)throw new HttpError(503,'The PC server is stopping.');
       // Called ONLY after the host/session/CSRF checks in server.mjs.
-      if(path==='/api/evidence/config'&&method==='GET'){send(req,res,200,{...aiSettings(),version:'0.3.0',limits:{sourcesPerJob:6,inputMegabytes:16},notice:'AI requests are opt-in and separately billed by OpenAI. Tracing, review and GLB export run locally.'});return true;}
+      if(path==='/api/evidence/config'&&method==='GET'){send(req,res,200,{...aiSettings(),version:'0.4.0',limits:{sourcesPerJob:6,inputMegabytes:16},notice:'AI requests are opt-in and separately billed by OpenAI. Tracing, review and GLB export run locally.'});return true;}
       const jm=path.match(/^\/api\/evidence\/jobs\/([a-zA-Z0-9-]+)(?:\/(cancel))?$/);
       if(jm){const job=store.job(jm[1]);if(method==='GET'&&!jm[2])send(req,res,200,job);else if(method==='POST'&&jm[2]){active.get(job.id)?.controller.abort();store.finishJob(job.id,'cancelled',null,'Cancelled by the user. Provider usage already incurred may still be charged.');send(req,res,200,store.job(job.id));}else throw new HttpError(405,'Method not allowed.');return true;}
       const m=path.match(/^\/api\/evidence\/buildings\/([a-zA-Z0-9-]+)(?:\/(sources|discover|reconstruct|drafts)(?:\/([a-zA-Z0-9-]+)(?:\/(review|export\.glb|export\.json))?)?)?$/);
