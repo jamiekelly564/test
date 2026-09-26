@@ -8,6 +8,7 @@ import { gzipSync } from 'node:zlib';
 import { openWorkspace } from './database.mjs';
 import { createSecurity } from './security.mjs';
 import { createAutoService } from './auto-model/service.mjs';
+import { ProviderError } from './auto-model/network.mjs';
 import { HttpError, buildingInput, normalisePostcode, surveyInput, taskInput, taskPatch, locationPatch, filenameInput, record } from './validation.mjs';
 import { tiers, surveyModules, featureStatus } from '../../packages/domain/catalog.mjs';
 
@@ -58,7 +59,7 @@ export function createApp(options={}){
       if(path==='/api/session'&&method==='GET')return send(req,res,200,security.session(req,res));
       if(path==='/api/session'&&method==='POST'){const b=await jsonBody(req);const s=security.authenticate(req,res,b.code);return send(req,res,200,{authenticated:true,csrf:s.csrf,mode:'trusted-lan'});}
       if(path.startsWith('/api/'))security.requireSession(req,!['GET','HEAD'].includes(method));
-      if(path==='/api/status'&&method==='GET')return send(req,res,200,{version:'0.2.0',mode:'local-development',database:'SQLite on this PC',cloudHosted:false,githubPublished:null,modelInstalled:!!workspace.manifest,postcodesEnabled:workspace.setting('postcodes_enabled',lookupDefault)==='true',features:featureStatus});
+      if(path==='/api/status'&&method==='GET')return send(req,res,200,{version:'0.2.1',mode:'local-development',database:'SQLite on this PC',cloudHosted:false,githubPublished:null,modelInstalled:!!workspace.manifest,postcodesEnabled:workspace.setting('postcodes_enabled',lookupDefault)==='true',features:featureStatus});
       if(path==='/api/catalog'&&method==='GET')return send(req,res,200,{tiers,modules:surveyModules,pricingStatus:'Quotation required - prices not configured',paymentsEnabled:false});
       if(path==='/api/settings'&&method==='PATCH'){const b=await jsonBody(req);if(typeof b.postcodesEnabled!=='boolean')throw new HttpError(400,'postcodesEnabled must be true or false.');workspace.setSetting('postcodes_enabled',String(b.postcodesEnabled));return send(req,res,200,{postcodesEnabled:b.postcodesEnabled});}
       if(path.startsWith('/api/postcodes/')&&method==='GET'){
@@ -121,7 +122,16 @@ export function createApp(options={}){
       if(path==='/viewer-embed.css')filename=join(ROOT,'packages/viewer/embed.css');
       if(!filename)throw new HttpError(404,'Page not found.');
       const content=await readFile(filename);return send(req,res,200,content,mimeTypes[extname(filename)]||'application/octet-stream');
-    }catch(e){const status=e instanceof HttpError?e.status:500;if(status===500)console.error('Request failed:',e.message);if(!res.headersSent)send(req,res,status,{error:status===500?'An unexpected local server error occurred. See the PC terminal.':e.message});else res.destroy();}
+    }catch(e){
+      const status=e instanceof HttpError?e.status:500;
+      const lookup=e instanceof ProviderError?e.diagnostic:undefined;
+      if(lookup)console.warn('[auto-model lookup]',JSON.stringify(lookup));
+      if(status===500)console.error('Request failed:',e.message);
+      if(!res.headersSent){
+        if(lookup?.retryAfterSeconds)res.setHeader('Retry-After',String(lookup.retryAfterSeconds));
+        send(req,res,status,{error:status===500?'An unexpected local server error occurred. See the PC terminal.':e.message,...(lookup?{lookup}:{})});
+      }else res.destroy();
+    }
   });
   server.requestTimeout=30000;server.headersTimeout=10000;
   return{server,workspace,security,close:()=>new Promise(resolve=>{server.close(()=>{workspace.close();resolve();});server.closeIdleConnections();})};
@@ -133,7 +143,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
   const app=createApp({lan});
   app.server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Stop the other local server or change PORT in .env.`:error.message);app.workspace.close();process.exit(1);});
   app.server.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>{
-    console.log(`\nPropertyChecked 0.2.0 - auto exterior models\nOpen http://localhost:${port}\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\n`);
+    console.log(`\nPropertyChecked 0.2.1 - resilient public-data lookup\nOpen http://localhost:${port}\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\n`);
     if(lan){console.log('TRUSTED HOME/OFFICE WIFI ONLY. This is HTTP, not an internet deployment.');console.log(`Access code: ${app.security.code}`);for(const ip of app.security.allowedHosts)if(!['localhost','127.0.0.1','[::1]'].includes(ip))console.log(`iPhone browser: http://${ip}:${port}`);}
     console.log('No payment, email, appointment or cloud deployment is made by this starter.\n');
   });

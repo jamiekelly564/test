@@ -11,7 +11,7 @@ export function createAutoService(workspace,options={}){
   function prune(){const now=Date.now();for(const [k,s]of searches)if(s.expires<now)searches.delete(k);for(const [k,s]of cache)if(s.expires<now)cache.delete(k);while(searches.size>60)searches.delete(searches.keys().next().value);while(cache.size>60)cache.delete(cache.keys().next().value);}
   function lookup(id){prune();const s=searches.get(id);if(!s)throw new HttpError(410,'This building search expired. Search again before saving.');return s.data;}
   return {
-    config:()=>({available:true,ai:aiConfig(),radiusM:250,externalRequests:'Search sends a postcode to Postcodes.io, coordinates to the configured Overpass service, and short Maps links to Google for redirect resolution only. No private drawings are sent.',providerMode:'local-interactive-prototype',notes:'Public Overpass is for occasional development tests. Configure your own or a contracted endpoint before a customer launch.'}),
+    config:()=>({available:true,ai:aiConfig(),radiusM:250,externalRequests:'Search sends a postcode to Postcodes.io, coordinates to the configured Overpass service (and one backup on temporary failure), and short Maps links to Google for redirect resolution only. No private drawings are sent.',providerMode:'local-interactive-prototype',notes:'Public Overpass is for occasional development tests. Configure your own or a contracted endpoint before a customer launch.'}),
     async search(input){
       if(input.allowExternal!==true)throw new HttpError(400,'Approve the public-data lookup before searching.');
       const value=text(input.input,'Postcode or Maps link',2200);prune();const cacheKey=value.trim();

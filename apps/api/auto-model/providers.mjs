@@ -1,49 +1,76 @@
 import { HttpError } from '../validation.mjs';
 import { parseInput, parseMaps, mapsUrl, coordinates } from './input.mjs';
 import { project, cleanRing, validatePolygon, polygonArea, insidePolygon, insideRing, bounds } from '../../../packages/auto-model/geometry.mjs';
+import { ProviderError, request, readJson, checkStatus, cancelBody } from './network.mjs';
 const TAGS=['name','addr:housenumber','addr:street','addr:postcode','building','building:part','building:levels','building:min_level','height','min_height','roof:height','roof:shape'];
-const UA='PropertyChecked-Local-Preview/0.2 (interactive user requests only)';
-async function readJson(response,max=3*1024*1024){
-  if(Number(response.headers.get('content-length'))>max){await response.body?.cancel();throw new HttpError(502,'The mapping response was too large for this preview. Try a more precise pin.');}
-  if(!response.ok){await response.body?.cancel();if(response.status===429)throw new HttpError(429,'The public data service is busy. Wait a minute before trying again.');throw new HttpError(503,'The public data service is unavailable. Please try again later.');}
-  const reader=response.body?.getReader();if(!reader)throw new HttpError(502,'The data service returned an empty response.');let len=0;const chunks=[];
-  try{while(true){const {value,done}=await reader.read();if(done)break;len+=value.length;if(len>max){await reader.cancel();throw new HttpError(502,'The mapping response is too large.');}chunks.push(value);}}finally{reader.releaseLock();}
-  const out=new Uint8Array(len);let pos=0;for(const c of chunks){out.set(c,pos);pos+=c.length;}
-  try{return JSON.parse(new TextDecoder().decode(out));}catch{throw new HttpError(502,'The data service did not return usable JSON.');}
+const PRIMARY = 'https://overpass-api.de/api/interpreter';
+const BACKUP = 'https://overpass.private.coffee/api/interpreter';
+function endpoint(value) {
+  let url; try { url = new URL(value); } catch { throw new Error('Overpass configuration must be a trusted HTTPS endpoint.'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Overpass configuration must be a trusted HTTPS endpoint with no credentials or fragment.');
+  return url;
 }
-async function request(fetcher,url,options={}){
-  try{return await fetcher(url,{redirect:'error',headers:{'User-Agent':UA,...options.headers},signal:AbortSignal.timeout(22000),...options});}
-  catch(e){if(e instanceof HttpError)throw e;throw new HttpError(503,'Could not reach the data service. Check your PC internet connection, or try again later.');}
-}
-export function createProviders({fetcher=fetch,overpassUrl=process.env.OVERPASS_API_URL||'https://overpass-api.de/api/interpreter'}={}){
-  const endpoint=new URL(overpassUrl);if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||endpoint.hash)throw new Error('OVERPASS_API_URL must be a trusted HTTPS endpoint with no credentials.');
+
+export function createProviders({fetcher=fetch, overpassUrl=process.env.OVERPASS_API_URL, fallbackUrl=process.env.OVERPASS_FALLBACK_URL, now=Date.now}={}) {
+  // A configured/private endpoint is never silently replaced by a public one.
+  const primary=endpoint(overpassUrl || PRIMARY);
+  const backup=fallbackUrl === 'none' ? null : fallbackUrl ? endpoint(fallbackUrl) : !overpassUrl ? endpoint(BACKUP) : null;
+  const endpoints=[primary, ...(backup && backup.href !== primary.href ? [backup] : [])];
+  const cooldowns=new Map(); let pauseUntil=0;
+  const context=url=>({stage:'footprints',provider:url.hostname});
   return {
-    async resolve(input){
+    async resolve(input) {
       let parsed=parseInput(input);
-      // Follow only redirect headers on explicitly allowed Google hosts. Never read imagery/page HTML.
-      for(let n=0;parsed.kind==='short-link';n++){
+      // Follow only redirect headers on explicitly allowed Google hosts. Never read page HTML.
+      for (let n=0; parsed.kind==='short-link'; n++) {
         if(n>=4)throw new HttpError(422,'Maps link has too many redirects. Paste the postcode or pin coordinates instead.');
-        const u=mapsUrl(parsed.url),r=await request(fetcher,u.href,{redirect:'manual',signal:AbortSignal.timeout(6500)});
-        await r.body?.cancel();
-        if(![301,302,303,307,308].includes(r.status)||!r.headers.get('location'))throw new HttpError(422,'The short Maps link could not be expanded. Paste the full browser Maps URL, postcode, or pin coordinates.');
+        const u=mapsUrl(parsed.url), ctx={stage:'maps',provider:u.hostname};
+        const r=await request(fetcher,u.href,{redirect:'manual',signal:AbortSignal.timeout(10000)},ctx);
+        if(r.status>=400)await checkStatus(r,ctx);
+        await cancelBody(r);
+        if(![301,302,303,307,308].includes(r.status)||!r.headers.get('location'))throw new ProviderError(ctx,'MAPS_LINK','the short link did not provide a usable redirect',{status:422});
         let next;try{next=new URL(r.headers.get('location'),u);}catch{throw new HttpError(422,'Invalid Maps redirect.');}
         parsed=parseMaps(mapsUrl(next.href));
       }
       if(parsed.kind==='coordinate')return parsed.location;
-      const r=await request(fetcher,`https://api.postcodes.io/postcodes/${encodeURIComponent(parsed.postcode)}`,{signal:AbortSignal.timeout(7000)});
-      if(r.status===404){await r.body?.cancel();throw new HttpError(404,'Postcode not found. Enter a complete current postcode or a location pin.');}
-      const data=await readJson(r,64000),p=data.result;
+      const ctx={stage:'postcode',provider:'api.postcodes.io'};
+      const r=await request(fetcher,`https://api.postcodes.io/postcodes/${encodeURIComponent(parsed.postcode)}`,{signal:AbortSignal.timeout(10000)},ctx);
+      if(r.status===404){await cancelBody(r);throw new HttpError(404,'Postcode not found. Enter a complete current postcode or a location pin.');}
+      const data=await readJson(r,64000,ctx),p=data?.result;
       if(!p||p.latitude==null||p.longitude==null)throw new HttpError(422,'This postcode has no usable coordinate. Use a precise location pin instead.');
       return {...coordinates(p.latitude,p.longitude,'postcode-centroid'),postcode:p.postcode,label:[p.postcode,p.admin_district].filter(Boolean).join(' / '),source:'https://postcodes.io',quality:p.quality};
     },
-    async buildings(location){
+    async buildings(location) {
       const {latitude:lat,longitude:lon}=coordinates(location.latitude,location.longitude);
+      if(now()<pauseUntil)throw new ProviderError(context(primary),'COOLDOWN',`the provider requested a pause; try again in ${Math.ceil((pauseUntil-now())/1000)} seconds`,{status:429,retryAfterSeconds:Math.ceil((pauseUntil-now())/1000)});
       const query=`[out:json][timeout:15][maxsize:33554432];(way["building"]["building"!="no"](around:250,${lat},${lon});relation["building"]["type"="multipolygon"](around:250,${lat},${lon});way["building:part"]["building:part"!="no"](around:250,${lat},${lon});relation["building:part"]["type"="multipolygon"](around:250,${lat},${lon});way["highway"]["name"](around:280,${lat},${lon}););out body geom;`;
-      const response=await request(fetcher,endpoint.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':UA},body:new URLSearchParams({data:query}).toString()});
-      const data=await readJson(response);
-      if(data.remark)throw new HttpError(503,'The footprint service did not complete the query. Try again later; no partial footprint has been modelled.');
-      if(!Array.isArray(data.elements)||data.elements.length>2500)throw new HttpError(502,'The footprint response is missing or too complex.');
-      return normaliseElements(data.elements,location,data.osm3s?.timestamp_osm_base);
+      const attempts=[];
+      for (const url of endpoints) {
+        if((cooldowns.get(url.href)||0)>now())continue;
+        const ctx=context(url);
+        try {
+          // 35 seconds allows the documented queue wait plus the 15-second query.
+          const response=await request(fetcher,url.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({data:query}).toString()},ctx);
+          const data=await readJson(response,3*1024*1024,ctx);
+          if(data?.remark)throw new ProviderError(ctx,'INCOMPLETE','the service did not complete the query; no partial footprint has been modelled',{transient:true});
+          if(!Array.isArray(data?.elements)||data.elements.length>2500)throw new ProviderError(ctx,'INVALID_DATA','the footprint response is missing or too complex',{status:502});
+          const result=normaliseElements(data.elements,location,data.osm3s?.timestamp_osm_base);
+          if(url!==primary)result.warnings.push('The primary mapping service was unavailable. Outlines were retrieved from the configured backup service.');
+          return {...result,provider:{host:url.hostname,fallback:url!==primary}};
+        } catch(error) {
+          if(!(error instanceof ProviderError))throw error;
+          attempts.push(error.diagnostic);
+          error.diagnostic={...error.diagnostic,attempts:[...attempts]};
+          // Never rotate providers to get around a rate limit, access denial or Retry-After.
+          if(error.diagnostic.retryAfterSeconds)pauseUntil=now()+error.diagnostic.retryAfterSeconds*1000;
+          if(!error.transient)throw error;
+          cooldowns.set(url.href,now()+60000);
+          if(url===endpoints.at(-1))throw error;
+        }
+      }
+      const wait=Math.max(1,Math.ceil((Math.min(...cooldowns.values())-now())/1000));
+      const error=new ProviderError(context(primary),'COOLDOWN',`mapping services are cooling down after a failure; retry in ${wait} seconds`,{retryAfterSeconds:wait});
+      error.diagnostic.attempts=attempts;throw error;
     }
   };
 }

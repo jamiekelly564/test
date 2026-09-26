@@ -1,4 +1,4 @@
-# PropertyChecked 0.2.0
+# PropertyChecked 0.2.1
 
 Local property-management workspace with **postcode / Maps link -> outline selection -> interactive 3D exterior -> saved building**.
 
@@ -14,7 +14,11 @@ Open **http://localhost:3000**. Use Node.js 24 LTS (minimum 22.16). No `npm inst
 
 **Already running v0.1?** Read [Updating without losing your data](docs/UPDATING.md). Stop the server, back up, and copy only the update files into the existing project. Do not replace `.data`, `.env` or `private-assets`.
 
-## New in this version
+## Public-data recovery update (0.2.1)
+
+A temporary failure of the default mapping service now permits one sequential backup request. Rate limits, access denials and Retry-After are not bypassed. The UI and terminal show the failed stage and a safe error code instead of the old generic message. Custom endpoints do not silently fall back to public ones. See [lookup troubleshooting](docs/LOOKUP-TROUBLESHOOTING.md).
+
+## Automatic models
 
 Open **Create 3D model** in the sidebar.
 
@@ -57,7 +61,7 @@ Live searches use Postcodes.io and an Overpass endpoint. Public Overpass is shar
 
 The full starter contains `private-assets/marketfield`. It is ignored by Git and served behind local session checks. Keep it separately when cloning to another PC. Runtime `.data`, `.env`, uploads and backups must remain out of Git and public deployments.
 
-This delivery has **not** pushed to GitHub or changed `firechecked_app` or `firechecked_portal`. Publish this separate project privately from VS Code, or use `npm run github:publish` with Git/GitHub CLI installed. The helper verifies the account, asks for confirmation, and stops rather than replacing an existing remote.
+This repository contains the separate PropertyChecked codebase. Neither `firechecked_app` nor `firechecked_portal` is part of this update. Keep the model pack and records private. Use `git pull --ff-only` in your existing checkout to receive published updates; stop and review any local-change or divergence error rather than resetting your work.
 
 ## iPhone preview on trusted Wi-Fi
 
@@ -69,7 +73,7 @@ Open the PC address printed in the terminal, not `localhost` on the phone; enter
 
 ```sh
 npm run check   # Syntax and private-data ignore checks
-npm test        # 52 offline unit / real local HTTP API tests
+npm test        # Offline unit / real local HTTP API tests
 npm run backup  # Copy database and uploads to a private local backup
 ```
 

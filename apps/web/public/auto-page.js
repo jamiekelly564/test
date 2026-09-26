@@ -6,11 +6,12 @@ const attribution='<a href="https://www.openstreetmap.org/copyright" target="_bl
 const key=()=>globalThis.crypto?.randomUUID?.()||`save-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const sourceLabel=value=>({'public-data':'Public mapping','estimated':'Estimated','user-estimate':'Your estimate','ai-estimate':'AI estimate','unknown':'Unknown'}[value]||value);
 export function autoPageHTML(initial=''){
-  return `<section class="page auto-page"><div class="page-heading"><div><p class="eyebrow">FREE / EXTERIOR PREVIEW</p><h1>Find it. Select it. Explore it.</h1><p>Create a real, rotatable model from mapped building outlines. No scan or payment required.</p></div><span class="auto-version">AUTO MODEL / 01</span></div>
+  return `<section class="page auto-page"><div class="page-heading"><div><p class="eyebrow">FREE / EXTERIOR PREVIEW</p><h1>Find it. Select it. Explore it.</h1><p>Create a real, rotatable model from mapped building outlines. No scan or payment required.</p></div><span class="auto-version">AUTO MODEL / 0.2.1</span></div>
   <div class="auto-steps"><span class="active" id="step-find"><b>01</b>Find the location</span><span id="step-select"><b>02</b>Confirm the building</span><span id="step-save"><b>03</b>Save your model</span></div>
   <form class="auto-search-card" id="auto-search-form"><div class="auto-search-main"><label for="auto-input">Property postcode or Google Maps link</label><div class="auto-input-row">${icon('pin')}<input id="auto-input" name="input" value="${e(initial)}" maxlength="2200" required placeholder="Postcode, Maps link or latitude, longitude" autocomplete="off"/><button class="btn primary" type="submit" id="auto-search-button">Find building ${icon('arrow')}</button></div></div>
-  <label class="auto-consent"><input type="checkbox" id="auto-consent" required/><span>Use public location and building data for this search.<small>Postcodes go to Postcodes.io; coordinates to Overpass. Short Maps links are expanded by Google. No plans or private records are sent.</small></span></label></form>
+  <label class="auto-consent"><input type="checkbox" id="auto-consent" required/><span>Use public location and building data for this search.<small>Postcodes go to Postcodes.io; coordinates to Overpass (primary and backup). Short Maps links are expanded by Google. No plans or private records are sent. <a href="https://overpass.private.coffee/#terms-of-use" target="_blank" rel="noreferrer">Backup provider terms and privacy</a>.</small></span></label></form>
   <div id="auto-message" class="auto-message" role="status" aria-live="polite">The postcode locates an area, not one property. You choose the correct outline before saving.</div>
+  <details id="auto-diagnostics" class="auto-message" hidden><summary>Lookup details</summary><pre id="auto-diagnostics-text" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre><p>These details identify the failed stage. They contain no keys, plans or resident records.</p></details>
   <div class="auto-start" id="auto-start"><div class="auto-start-icon">${icon('cube')}</div><h2>Your building starts with its footprint.</h2><p>We turn the selected outline into 3D geometry. Public heights are used where recorded; missing heights become clearly labelled assumptions.</p><div><span>REAL GEOMETRY</span><span>NO INVENTED INTERIORS</span><span>FREE PREVIEW</span></div></div>
   <div id="auto-work" hidden><div class="auto-work-grid"><section class="auto-selection panel"><div class="auto-panel-head"><div><p class="eyebrow">SELECT THE RIGHT OUTLINE</p><h2 id="auto-location-title">Your location</h2></div><span class="auto-north">N &uarr;</span></div><p class="auto-caption" id="auto-map-note"></p><div class="auto-map" id="auto-map"></div><div class="auto-map-footer">${attribution}<span>Click outlines / up to 6 blocks</span></div><label class="auto-filter">${icon('search')}<input id="auto-filter" placeholder="Filter building names or streets" aria-label="Filter mapped buildings"/></label><div id="auto-candidates" class="auto-candidates"></div></section>
   <section class="auto-preview-panel panel"><div class="auto-panel-head"><div><p class="eyebrow">LIVE 3D PREVIEW</p><h2 id="auto-preview-title">Select your building</h2></div><span class="badge amber">Not surveyed</span></div><div id="auto-preview" class="auto-preview"><div class="auto-viewer-empty">${icon('cube')}<p>Click a building outline to create the preview.</p></div></div><div class="auto-viewer-tools" id="auto-viewer-tools" hidden><button type="button" data-auto-camera="reset">${icon('reset')}Reset</button><button type="button" data-auto-camera="top">${icon('layers')}Top view</button><button type="button" data-auto-camera="plus" aria-label="Zoom in">+</button><button type="button" data-auto-camera="minus" aria-label="Zoom out">&minus;</button><button type="button" id="auto-highlight" aria-pressed="false">${icon('info')}Estimates</button></div><div id="auto-preview-info" class="auto-preview-info">No building has been assumed from the postcode alone.</div></section></div>
@@ -59,7 +60,8 @@ export function mountAutoPage(root,{initialQuery='',navigate,toast}){
   }
   on($('auto-search-form'),'submit',async event=>{
     event.preventDefault();if(state.busy)return;state.busy=true;$('auto-search-button').disabled=true;$('auto-search-button').textContent='Finding outlines...';
-    message('Resolving the location and loading nearby public building outlines. The provider may take a little time; no result is being guessed.');
+    $('auto-diagnostics').hidden=true;$('step-select').classList.remove('active');$('step-save').classList.remove('active');
+    message('Resolving the location and loading nearby public building outlines. A temporary mapping failure can trigger one backup request, so this may take about a minute. No result is being guessed.');
     clearViewer();state.search=null;state.selected.clear();state.overrides={};$('auto-work').hidden=true;$('auto-start').hidden=true;
     try{
       const data=await api('/api/auto/search',{...json('POST',{input:$('auto-input').value,allowExternal:$('auto-consent').checked}),signal});if(!state.alive)return;
@@ -70,7 +72,10 @@ export function mountAutoPage(root,{initialQuery='',navigate,toast}){
       $('auto-map').innerHTML=mapHTML(data,state.selected);bindMap();renderCandidates();$('auto-preview').innerHTML='<div class="auto-viewer-empty"><p>Select the outline of your building on the map or in the list.</p></div>';
       $('auto-warnings').textContent=data.warnings.join(' ');$('step-select').classList.add('active');$('step-save').classList.remove('active');
       message(`Found ${data.candidates.length} mapped outlines${data.cached?' (cached result)':''}. Select your building; the closest one is not automatically assumed to be yours.`);
-    }catch(error){if(state.alive){message(error.message,true);$('auto-start').hidden=false;}}
+    }catch(error){if(state.alive){
+      message(error.message,true);$('auto-start').hidden=false;
+      if(error.lookup){$('auto-diagnostics').hidden=false;$('auto-diagnostics-text').textContent=JSON.stringify(error.lookup,null,2);}
+    }}
     finally{if(state.alive){state.busy=false;$('auto-search-button').disabled=false;$('auto-search-button').innerHTML='Find building '+icon('arrow');}}
   });
   function bindMap(){
