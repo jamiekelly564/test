@@ -1,80 +1,77 @@
-# PropertyChecked 0.2.1
+# PropertyChecked 0.4.0
 
-Local property-management workspace with **postcode / Maps link -> outline selection -> interactive 3D exterior -> saved building**.
+Local building-management and evidence-to-3D workspace. Real interactive geometry, source records and explicit estimates; not generated pictures or an automated safety assessment.
 
-## Start on your PC
+## Start or update on your PC
 
-Extract the project, open the folder containing `package.json` in VS Code, then use **Terminal > New Terminal**:
+Open this repository folder in VS Code. Use Node.js 24 LTS (minimum 22.16). No runtime dependency installation is required.
+
+For an existing checkout, stop the running server with Ctrl+C first:
 
 ```sh
+npm run backup
+git pull --ff-only
 npm run dev
 ```
 
-Open **http://localhost:3000**. Use Node.js 24 LTS (minimum 22.16). No `npm install`, API key, cloud database or payment account is required for the basic application. New automatic models need an internet connection for public location and footprint data; saved models reopen locally.
+Stop and review any Git conflict rather than resetting your records or edits. Keep `.data`, `.env`, `private-assets` and backups. Open **http://localhost:3000** in a browser, not in PowerShell. Run only one server per port.
 
-**Already running v0.1?** Read [Updating without losing your data](docs/UPDATING.md). Stop the server, back up, and copy only the update files into the existing project. Do not replace `.data`, `.env` or `private-assets`.
+## Build from plans
 
-## Public-data recovery update (0.2.1)
+Choose **Build from plans** or open **http://localhost:3000/build**.
 
-A temporary failure of the default mapping service now permits one sequential backup request. Rate limits, access denials and Retry-After are not bypassed. The UI and terminal show the failed stage and a safe error code instead of the old generic message. Custom endpoints do not silently fall back to public ones. See [lookup troubleshooting](docs/LOOKUP-TROUBLESHOOTING.md).
+The connected workflow is **confirm building -> find references -> add authorised evidence -> generate draft -> review -> use in the building workspace**. Planning-reference search and drawing interpretation are optional OpenAI API requests. Local uploads, geometry review, explicit floor assembly, export and model selection run on your PC.
 
-## Automatic models
+- Batch-upload PDF/PNG/JPEG evidence and record roles, floors, revisions, drawing status and reuse permission.
+- Import an approved public direct drawing/photo link with public-address validation, bounded retrieval and policy checks. No login, CAPTCHA or access-block bypass.
+- Select up to six sources / 16 MB for each explicitly approved AI job. The response becomes a bounded, validated editable graph, not executable code.
+- Explore floor/cutaway/exploded views and click components for sources and document previews.
+- Combine separately processed floors using explicitly confirmed metric offsets/rotations. Shared drawing anchors must be checked; the software does not guess alignment.
+- Review and select a working evidence model in the normal property dashboard. The previous model and all records remain available; restore is reversible.
+- Download actual GLB/JSON geometry and source metadata.
 
-Open **Create 3D model** in the sidebar.
+Detailed instructions, safety boundaries and test limitations: **[Building workflow](docs/BUILD-WORKFLOW.md)**. The advanced `/studio` tracing/JSON workspace is retained; [v0.3 Evidence Studio](docs/EVIDENCE-STUDIO.md) documents its controls.
 
-1. Enter a complete UK postcode, supported Google Maps sharing link, or latitude, longitude.
-2. Approve the public-data lookup. The app identifies a search area and requests nearby mapped building outlines.
-3. Select the correct outline on the plan or in the list. Up to six blocks can be selected. The nearest building is **not** automatically assumed to be yours.
-4. Rotate/zoom the 3D exterior. Review sourced heights and labelled assumptions; optionally supply your own height/storey estimate.
-5. Confirm and save. The model, provenance, original source outlines/tags and any AI suggestions are stored in the local database. Export a real GLB model or footprint GeoJSON.
+## Connect AI privately
 
-This is **coarse exterior geometry**, not photoreal reconstruction. Mapped building parts create different heights where available; absent setbacks, windows, roof shapes, rooms and services are not invented. No source data means no substitute building.
+```sh
+npm run setup:ai
+```
 
-### Optional GPT-6
+The local terminal wizard hides the API key, checks model-entry access and preserves other .env settings. Restart the server after setup. The browser receives configuration status only, not the key. Existing OPENAI_API_KEY and OPENAI_RECONSTRUCTION_MODEL settings continue to work.
 
-Copy `.env.example` to `.env` and set `OPENAI_API_KEY` privately on your PC. `OPENAI_MODEL` defaults to `gpt-6-astra`. Restart the server, then explicitly select the optional GPT checkbox before saving. API access/billing are separate from the local app. No key is shipped or requested in chat.
+Model-entry access is not proof of available credit or reconstruction accuracy. Search and reconstruction are separately approved API calls; no paid call runs merely because the app starts. No real key is included. Do not paste credentials into chat or GitHub. No paid live AI request was made during development tests.
 
-The adapter asks for **missing-height suggestions only**, from limited building-type/area tags. Suggestions remain estimates; AI does not overwrite mapped heights or create interiors, defects or compliance scores. The request path has been tested with simulated responses, not a paid live API call.
+## Existing functionality preserved
 
-## Existing features retained
+Marketfield Court's private plan-based/estimated model and its controls remain unchanged. Buildings, source documents, notes, tasks, history, backups, Bronze/Silver/Gold survey configuration and local unsent survey requests are retained. Drawing reviews and closed tasks do not create inspection passes. Evidence-model components are not automatically treated as site-verified assets.
 
-- Marketfield Court's existing plan-based and estimated interactive model, unchanged.
-- Whole-building, individual-floor, cutaway, separated-floor, plan comparison and estimate controls for that model.
-- Building/location notes and drawing-review states; tasks, private PDF/image uploads and event history.
-- Bronze / Silver / Gold scope configuration and locally saved survey requests.
-- Building-record exports and private local backups.
-- Trusted-Wi-Fi preview with startup access code, plus VS Code tasks and GitHub CI.
+The older **Create 3D model** workflow uses postcode/pin resolution and a configured footprint provider for coarse exterior geometry. Shared public Overpass may refuse this application. Access denials are not bypassed; see [406 diagnostics](docs/LOOKUP-406.md). The new drawing route does not depend on Overpass. Saved models reopen without contacting a footprint provider.
 
-Survey requests remain **unsent local records**, not booked visits or payments. Reviewing a drawing or closing a task is not an inspection pass.
+## Boundaries
 
-## Not implemented
+This is a single local-owner development workspace built with browser ES modules, native Node HTTP and SQLite, not yet the future production Next.js/PostgreSQL deployment. It is not a guaranteed address-only UK planning crawler or an accurate as-built reconstruction without source review. Publicly viewable plans/photos do not automatically carry commercial reuse rights. Unknown or conflicting dimensions and revisions need human review.
 
-A full address/UPRN directory; automatic detailed floor-plan/scan reconstruction; measured terrain; realistic roof/facade reconstruction; live inspections; production customer accounts, permissions, billing or subscription enforcement; contractor email/appointments; cloud hosting. Manual building records without an auto-model remain **model pending**, never copies of Marketfield.
+There is no production tenant authentication, subscription enforcement, payments, contractor messaging, cloud deployment, automatic services inspection or safety certification. AI can misread drawings even when the graph validates. Do not expose this local server to the public internet. No remote provider, private client file or paid API job is needed for the automated tests.
 
-## How this build runs
+## Private files and GitHub
 
-Browser ES modules, a native Node.js HTTP API and local SQLite. This is not the proposed future Next.js/PostgreSQL deployment. Auto-model geometry is deterministic; a small local WebGL viewer includes a software-rendered compatibility fallback. No image-generation service, Google imagery, map tiles, browser CDN or third-party runtime package is required.
+Work only in this separate repository. `firechecked_app` and `firechecked_portal` are not part of it. Never commit real .env files, uploaded drawings, private models, .data or backups. The private Marketfield pack stays in `private-assets/marketfield` and must be copied separately onto a new computer. This code repository does not contain the client model pack.
 
-Live searches use Postcodes.io and an Overpass endpoint. Public Overpass is shared and can time out or rate-limit; configure a self-hosted/contracted service before a customer launch. [Full provider and provenance notes](docs/AUTO-MODELS.md).
-
-## Private model pack and source control
-
-The full starter contains `private-assets/marketfield`. It is ignored by Git and served behind local session checks. Keep it separately when cloning to another PC. Runtime `.data`, `.env`, uploads and backups must remain out of Git and public deployments.
-
-This repository contains the separate PropertyChecked codebase. Neither `firechecked_app` nor `firechecked_portal` is part of this update. Keep the model pack and records private. Use `git pull --ff-only` in your existing checkout to receive published updates; stop and review any local-change or divergence error rather than resetting your work.
-
-## iPhone preview on trusted Wi-Fi
+## Trusted-Wi-Fi preview
 
 ```sh
 npm run dev:lan
 ```
 
-Open the PC address printed in the terminal, not `localhost` on the phone; enter the startup code. The PC must remain running. Use trusted private Wi-Fi only. Do not expose the HTTP development server to the internet. Physical iPhone testing is still outstanding.
+Use the PC address printed in the terminal on the phone, not localhost. Enter the startup access code. Keep the PC running. This is HTTP on a trusted private network, not public hosting. Physical iPhone testing is still required.
+
+## Checks
 
 ```sh
-npm run check   # Syntax and private-data ignore checks
-npm test        # Offline unit / real local HTTP API tests
-npm run backup  # Copy database and uploads to a private local backup
+npm run check
+npm test
+npm run backup
 ```
 
-[Setup](docs/SETUP.md) | [Update instructions](docs/UPDATING.md) | [Auto-model details](docs/AUTO-MODELS.md) | [Architecture](docs/ARCHITECTURE.md) | [Security](docs/SECURITY.md) | [Test status](docs/STATUS.md) | [Roadmap](docs/ROADMAP.md)
+Tests use synthetic evidence and mocked external services; real local HTTP API tests are included. GitHub CI runs Node 22 and 24. See [v0.4 validation and limitations](docs/BUILD-WORKFLOW.md#validation), [Architecture](docs/ARCHITECTURE.md) and [Security](docs/SECURITY.md).
