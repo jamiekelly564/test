@@ -8,7 +8,7 @@ const UA='PropertyChecked/0.4 (+https://github.com/jamiekelly564/test; user-appr
 export function publicURL(value){
   let u;try{u=new URL(value);}catch{throw new HttpError(400,'Enter a complete public HTTPS document link.');}
   const h=u.hostname.toLowerCase();
-  if(u.protocol!=='https:'||u.username||u.password||(u.port&&u.port!=='443')||isIP(h.replace(/[\[\]]/g,''))||!h.includes('.')||/(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(h))throw new HttpError(400,'Use a public HTTPS hostname, without credentials, IP addresses or custom ports.');
+  if(u.protocol!=='https:'||u.username||u.password||(u.port&&u.port!=='443')||h.endsWith('.')||isIP(h.replace(/[\[\]]/g,''))||!h.includes('.')||/(?:^|\.)(?:localhost|local|internal|test|invalid)$/.test(h))throw new HttpError(400,'Use a public HTTPS hostname, without credentials, IP addresses or custom ports.');
   if(/(^|\.)(google\.[a-z.]+|googleapis\.com|gstatic\.com|goo\.gl)$/.test(h))throw new HttpError(400,'Google Maps links are location references, not permission to import imagery. Supply your own or licensed drawings/photos.');
   if([...u.searchParams.keys()].some(k=>/^(token|access_token|api_?key|signature|sig|credential|x-amz-.+)$/i.test(k)))throw new HttpError(400,'Use a public document link without embedded credentials or signed access tokens.');
   u.hash='';return u;
@@ -35,22 +35,39 @@ export async function fetchPublic(value,{max=25*1024*1024,timeout=20000,signal}=
     req.on('close',()=>clearTimeout(timer));req.on('error',()=>reject(new HttpError(502,signal?.aborted?'Import cancelled.':'Secure document request failed. Check the link or upload the authorised file instead.')));
   });
 }
+// Do not turn untrusted robots patterns into a backtracking regular expression.
+// A shared operation budget makes excessive policy complexity fail closed.
+function ruleMatches(pattern,path,budget){
+  const anchored=pattern.endsWith('$'),glob=(anchored?pattern.slice(0,-1):pattern)+'*'.repeat(anchored?0:1);
+  let p=0,s=0,star=-1,mark=0;
+  while(s<path.length){
+    if(--budget.remaining<0)return null;
+    if(glob[p]==='*'){star=p++;mark=s;}
+    else if(glob[p]===path[s]){p++;s++;}
+    else if(star>=0){p=star+1;s=++mark;}
+    else return false;
+  }
+  while(glob[p]==='*')p++;
+  return p===glob.length;
+}
 /** Conservative robots policy: most specific matching agent/rule, allow wins ties. */
 export function robotsAllow(text,path){
+  if(text.length>256*1024||path.length>4096)return false;
   const groups=[];let group=null,rules=false;
   for(const raw of text.split(/\r?\n/)){
     const line=raw.split('#')[0].trim(),m=/^([^:]+):(.*)$/.exec(line);if(!m)continue;
     const key=m[1].trim().toLowerCase(),value=m[2].trim();
+    if(value.length>4096)return false;
     if(key==='user-agent'){if(!group||rules){group={agents:[],rules:[]};groups.push(group);rules=false;}group.agents.push(value.toLowerCase());}
     else if(group&&['allow','disallow'].includes(key)){rules=true;if(value)group.rules.push({allow:key==='allow',value});}
   }
   const specificity=g=>Math.max(-1,...g.agents.map(a=>a==='*'?0:BOT.toLowerCase().includes(a)?a.length:-1));
   const best=Math.max(-1,...groups.map(specificity));let winner=null;if(best<0)return true;
+  const budget={remaining:2000000};
   for(const g of groups.filter(g=>specificity(g)===best))for(const rule of g.rules){
-    const pattern=rule.value,anchor=pattern.endsWith('$'),body=anchor?pattern.slice(0,-1):pattern;
-    const re=new RegExp('^'+body.split('*').map(p=>p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('.*')+(anchor?'$':''));
-    const length=body.replace(/\*/g,'').length;
-    if(re.test(path)&&(!winner||length>winner.length||length===winner.length&&rule.allow))winner={length,allow:rule.allow};
+    const matched=ruleMatches(rule.value,path,budget);if(matched===null)return false;
+    const length=rule.value.replace(/\$$/,'').replace(/\*/g,'').length;
+    if(matched&&(!winner||length>winner.length||length===winner.length&&rule.allow))winner={length,allow:rule.allow};
   }
   return !winner||winner.allow;
 }
