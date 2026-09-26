@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { normalisePostcode, buildingInput, surveyInput, taskInput, locationPatch, filenameInput } from '../apps/api/validation.mjs';
+const sample={tier:'silver',modules:['fire_doors'],coverage:'Communal areas only',preferredDate:'',notes:'',requestKey:'request-123456789'};
+test('postcodes normalise without claiming address verification',()=>{assert.equal(normalisePostcode('rh2 9qq'),'RH2 9QQ');assert.equal(normalisePostcode('sw1a1aa'),'SW1A 1AA');assert.throws(()=>normalisePostcode('123'));});
+test('building fields are bounded',()=>{assert.equal(buildingInput({name:' Test ',postcode:'RH29QQ'}).name,'Test');assert.throws(()=>buildingInput({name:'x'.repeat(151),postcode:'RH29QQ'}));});
+test('commercial tier cannot be an arbitrary paid claim',()=>{assert.equal(surveyInput(sample).tier,'silver');assert.throws(()=>surveyInput({...sample,tier:'platinum'}));});
+test('at least one known inspection module is required',()=>{assert.throws(()=>surveyInput({...sample,modules:[]}));assert.throws(()=>surveyInput({...sample,modules:['automatic_certification']}));assert.equal(surveyInput({...sample,modules:['fire_doors','fire_doors']}).modules.length,1);});
+test('impossible dates are rejected',()=>{assert.throws(()=>surveyInput({...sample,preferredDate:'2099-02-30'}));assert.throws(()=>surveyInput({...sample,preferredDate:'2020-01-01'}));});
+test('task priority is validated',()=>{assert.throws(()=>taskInput({title:'A task',priority:'magic'}));assert.equal(taskInput({title:'Check door'}).priority,'normal');});
+test('notes cannot record an invented inspection pass',()=>{assert.throws(()=>locationPatch({notes:'',reviewStatus:'fire_safety_pass',version:1}));assert.equal(locationPatch({notes:'Needs a visit',reviewStatus:'site_check_needed',version:1}).reviewStatus,'site_check_needed');});
+test('concurrent records require a version',()=>{assert.throws(()=>locationPatch({notes:'test',reviewStatus:'not_reviewed'}));});
+test('upload path traversal and controls are rejected',()=>{assert.throws(()=>filenameInput('../secret.txt'));assert.throws(()=>filenameInput('folder\\file.pdf'));assert.throws(()=>filenameInput('a\u0000.pdf'));assert.equal(filenameInput('Building plan.pdf'),'Building plan.pdf');});

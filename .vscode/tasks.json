@@ -1,0 +1,9 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label":"PropertyChecked: start locally","type":"npm","script":"dev","isBackground":true,"problemMatcher":[]},
+    {"label":"PropertyChecked: phone on Wi-Fi","type":"npm","script":"dev:lan","isBackground":true,"problemMatcher":[]},
+    {"label":"PropertyChecked: test","type":"npm","script":"test","group":{"kind":"test","isDefault":true},"problemMatcher":[]},
+    {"label":"PropertyChecked: check","type":"npm","script":"check","problemMatcher":[]}
+  ]
+}

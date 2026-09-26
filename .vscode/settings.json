@@ -1,0 +1,6 @@
+{
+  "files.exclude": {"**/.DS_Store":true},
+  "search.exclude": {".data":true,"private-assets":true,"backups":true},
+  "files.watcherExclude": {"**/.data/**":true,"**/backups/**":true},
+  "editor.tabSize": 2
+}

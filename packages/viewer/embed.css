@@ -1,0 +1,6 @@
+html.pc-embed .topbar,html.pc-embed .rail,html.pc-embed .panel,html.pc-embed .stage-title,html.pc-embed .model-badge,html.pc-embed .level-control,html.pc-embed .right-controls,html.pc-embed .bottom-controls,html.pc-embed .stage-footer,html.pc-embed .compass,html.pc-embed .mobile-panel{display:none!important}
+html.pc-embed,html.pc-embed body,html.pc-embed .workspace,html.pc-embed .stage{width:100%!important;height:100%!important;min-height:0!important;margin:0!important;padding:0!important}
+html.pc-embed .workspace{display:block!important}
+html.pc-embed .stage{background:radial-gradient(ellipse at 50% 35%,#f8faf6,#e4ece7)!important}
+html.pc-embed .loading{background:#f3f7f2!important}
+html.pc-embed #model{touch-action:none}
