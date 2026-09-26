@@ -16,7 +16,7 @@ export function createProviders({fetcher=fetch, overpassUrl=process.env.OVERPASS
   const primary=endpoint(overpassUrl || PRIMARY);
   const backup=fallbackUrl === 'none' ? null : fallbackUrl ? endpoint(fallbackUrl) : !overpassUrl ? endpoint(BACKUP) : null;
   const endpoints=[primary, ...(backup && backup.href !== primary.href ? [backup] : [])];
-  const cooldowns=new Map(); let pauseUntil=0;
+  const cooldowns=new Map(); let pauseUntil=0, accessFailure=null;
   const context=url=>({stage:'footprints',provider:url.hostname});
   return {
     async resolve(input) {
@@ -42,6 +42,16 @@ export function createProviders({fetcher=fetch, overpassUrl=process.env.OVERPASS
     },
     async buildings(location) {
       const {latitude:lat,longitude:lon}=coordinates(location.latitude,location.longitude);
+      // Latch refusals for this server session. Another postcode, a timer or a
+      // backup must not turn a denied request into repeated outbound traffic.
+      if(accessFailure){
+        const d=accessFailure.diagnostic;
+        const error=new ProviderError({stage:'footprints',provider:d.provider},d.code,
+          'building-data requests remain stopped after the service rejected access. Resolve the provider configuration or permission before restarting the app',
+          {status:accessFailure.status,httpStatus:d.httpStatus,actionRequired:true});
+        error.diagnostic={...error.diagnostic,requestSuppressed:true,attempts:d.attempts};
+        throw error;
+      }
       if(now()<pauseUntil)throw new ProviderError(context(primary),'COOLDOWN',`the provider requested a pause; try again in ${Math.ceil((pauseUntil-now())/1000)} seconds`,{status:429,retryAfterSeconds:Math.ceil((pauseUntil-now())/1000)});
       const query=`[out:json][timeout:15][maxsize:33554432];(way["building"]["building"!="no"](around:250,${lat},${lon});relation["building"]["type"="multipolygon"](around:250,${lat},${lon});way["building:part"]["building:part"!="no"](around:250,${lat},${lon});relation["building:part"]["type"="multipolygon"](around:250,${lat},${lon});way["highway"]["name"](around:280,${lat},${lon}););out body geom;`;
       const attempts=[];
@@ -63,6 +73,7 @@ export function createProviders({fetcher=fetch, overpassUrl=process.env.OVERPASS
           error.diagnostic={...error.diagnostic,attempts:[...attempts]};
           // Never rotate providers to get around a rate limit, access denial or Retry-After.
           if(error.diagnostic.retryAfterSeconds)pauseUntil=now()+error.diagnostic.retryAfterSeconds*1000;
+          if(error.diagnostic.actionRequired)accessFailure=error;
           if(!error.transient)throw error;
           cooldowns.set(url.href,now()+60000);
           if(url===endpoints.at(-1))throw error;

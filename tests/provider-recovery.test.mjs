@@ -42,9 +42,12 @@ test('rate limits are not bypassed using a mirror; Retry-After blocks further ca
   clock+=91000;await fail(p.buildings(origin),'RATE_LIMIT');assert.equal(calls,2);
 });
 
-test('HTTP 406 follows the same at-least-30-second pause, not failover',async()=>{
+test('HTTP 406 from overpass-api.de is an access refusal, not a 30-second rate limit',async()=>{
   let count=0;const p=createProviders({fetcher:async()=>{count++;return json({},406);}});
-  const error=await fail(p.buildings(origin),'RATE_LIMIT');assert.equal(count,1);assert.equal(error.diagnostic.retryAfterSeconds,30);
+  const error=await fail(p.buildings(origin),'ACCESS_DENIED');assert.equal(count,1);
+  assert.equal(error.diagnostic.httpStatus,406);assert.equal(error.diagnostic.retryAfterSeconds,0);
+  assert.equal(error.diagnostic.actionRequired,true);assert.equal(error.transient,false);
+  assert.doesNotMatch(error.message,/wait at least 30|asked us to pause/);
 });
 
 test('503 Retry-After is honoured without hitting a backup',async()=>{

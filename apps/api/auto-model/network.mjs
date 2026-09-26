@@ -1,11 +1,11 @@
 import { HttpError } from '../validation.mjs';
 
-const UA = 'PropertyChecked-Local-Preview/0.2.1 (+https://github.com/jamiekelly564/test)';
+const UA = 'PropertyChecked-Local-Preview/0.2.2 (+https://github.com/jamiekelly564/test)';
 const labels = { maps: 'Google Maps link resolution', postcode: 'Postcodes.io postcode lookup', footprints: 'Building-outline lookup', data: 'Data lookup' };
 
 /** Safe diagnostics only: never include URLs, response bodies, keys or user input. */
 export class ProviderError extends HttpError {
-  constructor(context, code, reason, { status = 503, httpStatus = null, retryAfterSeconds = 0, transient = false } = {}) {
+  constructor(context, code, reason, { status = 503, httpStatus = null, retryAfterSeconds = 0, transient = false, actionRequired = false } = {}) {
     const { stage = 'data', provider = 'data service' } = context;
     const hint = stage === 'maps' ? 'Open the link in your browser and paste the full Maps URL, postcode or pin coordinates.'
       : stage === 'postcode' ? 'You can also paste precise latitude, longitude to skip postcode lookup.'
@@ -13,7 +13,7 @@ export class ProviderError extends HttpError {
     super(status, `${labels[stage] || labels.data}: ${reason}${httpStatus ? ` (HTTP ${httpStatus})` : ''}. ${hint}`.trim());
     this.code = code;
     this.transient = transient;
-    this.diagnostic = { stage, provider, code, httpStatus, retryAfterSeconds };
+    this.diagnostic = { stage, provider, code, httpStatus, retryAfterSeconds, ...(actionRequired ? { actionRequired: true } : {}) };
   }
 }
 
@@ -54,11 +54,23 @@ export async function checkStatus(response, context = {}, now = Date.now()) {
   if (response.ok) return;
   await cancelBody(response);
   const httpStatus = response.status, retry = retrySeconds(response.headers.get('retry-after'), now);
-  if ([429, 406].includes(httpStatus)) {
+  // This host's operator documents 406 as a manual access block, not 429.
+  // Other services may use the normal HTTP content-negotiation meaning.
+  // Never invent a retry interval, change identity or fail over on a refusal.
+  if (httpStatus === 406) {
+    const overpassBlock = context.stage === 'footprints' &&
+      (context.provider === 'overpass-api.de' || context.provider?.endsWith('.overpass-api.de'));
+    throw new ProviderError(context, overpassBlock ? 'ACCESS_DENIED' : 'NOT_ACCEPTABLE',
+      overpassBlock
+        ? 'this Overpass service rejected application access, not a normal rate limit. Stop retrying; resolve access with the operator or configure a data service that authorises this use'
+        : 'the service rejected this request as not acceptable. Check its request requirements and access policy before retrying',
+      { status: 502, httpStatus, retryAfterSeconds: retry, actionRequired: true });
+  }
+  if (httpStatus === 429) {
     const wait = Math.max(30, retry);
     throw new ProviderError(context, 'RATE_LIMIT', `the service asked us to pause; wait at least ${wait} seconds before retrying`, { status: 429, httpStatus, retryAfterSeconds: wait });
   }
-  if ([401, 403].includes(httpStatus)) throw new ProviderError(context, 'ACCESS_DENIED', 'the service refused access; check the configured provider or network policy', { httpStatus });
+  if ([401, 403].includes(httpStatus)) throw new ProviderError(context, 'ACCESS_DENIED', 'the service refused access; check the configured provider or network policy before retrying', { httpStatus, retryAfterSeconds: retry, actionRequired: true });
   if (httpStatus >= 500) throw new ProviderError(context, 'UPSTREAM', retry ? `the service is temporarily unavailable; wait at least ${retry} seconds` : 'the service is temporarily unavailable', { httpStatus, retryAfterSeconds: retry, transient: !retry });
   throw new ProviderError(context, 'HTTP', 'the service rejected this request', { httpStatus, status: 502 });
 }
