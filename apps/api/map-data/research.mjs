@@ -33,10 +33,17 @@ export function mapResearch(base, provider) {
         note = mapData.note + ' Diagnostic: ' + mapData.code + '.';
       }
       const mergeRefs = refs => [...referencesFor(mapped), ...(refs || []).filter(r => !/^map-ms|^scan-ea/.test(r.id))].slice(0, 24);
-      const mappedSpec = spec => mapped ? applyMapped(spec, mapped) : { ...spec, assumptions:[...(spec.assumptions || []), note || 'Open map data was unavailable.'].slice(-30) };
+      const mappedSpec = spec => {
+        if (!mapped) return { ...spec, assumptions:[...(spec.assumptions || []), note || 'Open map data was unavailable.'].slice(-30) };
+        const next = applyMapped(spec, mapped);
+        const used = new Set(spec.usedPhotoIds || []).size;
+        if (used) next.summary += ` Appearance uses ${used} retrieved photo reference${used === 1 ? '' : 's'}; hidden sides remain estimated.`;
+        else if (spec.summary?.startsWith('No matching photograph was used.')) next.summary += ' No matching photograph was used; the facade is still an estimate.';
+        return next;
+      };
       const initial = mappedSpec(args.spec);
       await onProgress({ stage:'research', message:mapped ? 'Mapped footprint ready. Height and building identity remain estimates; appearance research can refine the facade.' : note,
-        spec:initial, basis:mapped ? 'map-based-estimate' : 'generic-starting-estimate', references:mergeRefs([]), mapData });
+        spec:initial, basis:mapped ? 'map-based-estimate' : 'generic-starting-estimate', mapData });
       if (!base.configured()) return { spec:initial, basis:mapped ? 'map-based-estimate' : 'generic-starting-estimate',
         references:mergeRefs([]), photos:[], usage:args.usage, mapData,
         message:mapped ? 'Map-based estimate saved without an AI charge. The building match, roof and internal layout are unverified.' : 'The starting estimate is saved. Open map data was unavailable and AI is not configured.' };
@@ -45,7 +52,7 @@ export function mapResearch(base, provider) {
       const result = await base.run({ ...args, spec:baseSpec, onProgress: async progress => {
         signal.throwIfAborted();
         await onProgress({ ...progress, ...(progress.spec ? { spec:mappedSpec(progress.spec) } : {}),
-          basis:mapped ? 'map-based-estimate' : progress.basis, references:mergeRefs(progress.references), mapData });
+          basis:mapped ? 'map-based-estimate' : progress.basis, ...(progress.references ? {references:mergeRefs(progress.references)} : {}), mapData });
       } });
       return { ...result, spec:mappedSpec(result.spec), basis:mapped ? 'map-based-estimate' : result.basis,
         references:mergeRefs(result.references), mapData,

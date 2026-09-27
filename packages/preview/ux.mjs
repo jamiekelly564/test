@@ -1,6 +1,6 @@
 import { validateSpec } from './model.mjs';
 
-export const RELEASE = '0.8.0';
+export const RELEASE = '0.8.1';
 export function postcodeValue(value) {
   const raw = String(value || '').toUpperCase().replace(/\s/g, '');
   if (!/^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/.test(raw)) return null;
