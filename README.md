@@ -1,12 +1,12 @@
-# PropertyChecked 0.4.0
+# PropertyChecked 0.5.0
 
-Local building-management and evidence-to-3D workspace. Real interactive geometry, source records and explicit estimates; not generated pictures or an automated safety assessment.
+Local building-management workspace with a **building name + postcode** customer journey, automatic processing of approved evidence, and a staff review queue. Models contain actual interactive geometry, not generated pictures or inferred safety assessments.
 
-## Start or update on your PC
+## Start or update
 
-Open this repository folder in VS Code. Use Node.js 24 LTS (minimum 22.16). No runtime dependency installation is required.
+Open this repository folder in VS Code. Use the existing Node.js installation (minimum 22.16). No new runtime dependencies are required.
 
-For an existing checkout, stop the running server with Ctrl+C first:
+Stop the running server with Ctrl+C, then run these commands separately:
 
 ```sh
 npm run backup
@@ -14,57 +14,47 @@ git pull --ff-only
 npm run dev
 ```
 
-Stop and review any Git conflict rather than resetting your records or edits. Keep `.data`, `.env`, `private-assets` and backups. Open **http://localhost:3000** in a browser, not in PowerShell. Run only one server per port.
+Stop on a Git error instead of resetting files. Keep `.data`, `.env`, `private-assets` and backups. Open `http://localhost:3000/start` in the **browser**, not PowerShell. Run only one server per port.
 
-## Build from plans
+## Customer journey
 
-Choose **Build from plans** or open **http://localhost:3000/build**.
+Enter the building name and postcode, then choose **Create my 3D building**. Processing automatically reuses an existing matched model, generates an exterior from an approved footprint, or collects and interprets authorised drawings. The customer sees real progress and a ready preview, an exterior-only preview, or a clear PropertyChecked review status. Ambiguous records require a building choice; technical source selection and batching belong to staff.
 
-The connected workflow is **confirm building -> find references -> add authorised evidence -> generate draft -> review -> use in the building workspace**. Planning-reference search and drawing interpretation are optional OpenAI API requests. Local uploads, geometry review, explicit floor assembly, export and model selection run on your PC.
+Requests, progress and models are saved. Refreshing does not resubmit paid work. Supported results include floor selection, cutaway/exploded views, source notes and GLB export. Survey links open the existing Bronze/Silver/Gold scope flow; no payment or booking is made.
 
-- Batch-upload PDF/PNG/JPEG evidence and record roles, floors, revisions, drawing status and reuse permission.
-- Import an approved public direct drawing/photo link with public-address validation, bounded retrieval and policy checks. No login, CAPTCHA or access-block bypass.
-- Select up to six sources / 16 MB for each explicitly approved AI job. The response becomes a bounded, validated editable graph, not executable code.
-- Explore floor/cutaway/exploded views and click components for sources and document previews.
-- Combine separately processed floors using explicitly confirmed metric offsets/rotations. Shared drawing anchors must be checked; the software does not guess alignment.
-- Review and select a working evidence model in the normal property dashboard. The previous model and all records remain available; restore is reversible.
-- Download actual GLB/JSON geometry and source metadata.
+**National data coverage is not included.** A new property without approved geometry may still require staff to obtain drawings or licensed footprints. The software does not turn search citations into reuse permission, infer an as-built design from a planning proposal, or show invented interiors as fact. See [Automatic building requests](docs/AUTOMATIC-MODELS.md).
 
-Detailed instructions, safety boundaries and test limitations: **[Building workflow](docs/BUILD-WORKFLOW.md)**. The advanced `/studio` tracing/JSON workspace is retained; [v0.3 Evidence Studio](docs/EVIDENCE-STUDIO.md) documents its controls.
+## Staff workflow
 
-## Connect AI privately
+Open `http://localhost:3000/operations` for requests needing source acquisition, identity checks, conflict resolution or drawing quality review. Install centrally approved property-source packs, open the drawing workspace and explicitly resume processing after correcting the issue. The queue is local; no email alert or background monitoring service is configured.
 
-```sh
-npm run setup:ai
-```
+The existing `/build` workflow remains available for batch document registration, approved direct-file imports, evidence review, explicit floor alignment and primary workspace model activation. `/studio` retains calibrated tracing and graph editing. Read [Building workflow](docs/BUILD-WORKFLOW.md) and [Evidence Studio](docs/EVIDENCE-STUDIO.md).
 
-The local terminal wizard hides the API key, checks model-entry access and preserves other .env settings. Restart the server after setup. The browser receives configuration status only, not the key. Existing OPENAI_API_KEY and OPENAI_RECONSTRUCTION_MODEL settings continue to work.
+Automatic drawing results are unreviewed previews. They are not automatically marked site verified or silently substituted for the original primary model. Staff review and activation remain explicit.
 
-Model-entry access is not proof of available credit or reconstruction accuracy. Search and reconstruction are separately approved API calls; no paid call runs merely because the app starts. No real key is included. Do not paste credentials into chat or GitHub. No paid live AI request was made during development tests.
+## Operator AI configuration
 
-## Existing functionality preserved
+AI credentials belong to the operator's private `.env`, never to a customer form or browser script. Existing `OPENAI_API_KEY` and `OPENAI_RECONSTRUCTION_MODEL` settings are reused. Restart after changing configuration. Configuration presence is not proof of account access, billing credit or reconstruction accuracy.
 
-Marketfield Court's private plan-based/estimated model and its controls remain unchanged. Buildings, source documents, notes, tasks, history, backups, Bronze/Silver/Gold survey configuration and local unsent survey requests are retained. Drawing reviews and closed tasks do not create inspection passes. Evidence-model components are not automatically treated as site-verified assets.
+Creating an automatic request approves its bounded processing; later searches and interpretations may incur usage on the operator API account. No paid call runs merely because the server starts. Existing models, local approved footprint extrusion and manual review/tracing can work without an AI key. Never paste real credentials into chat or GitHub.
 
-The older **Create 3D model** workflow uses postcode/pin resolution and a configured footprint provider for coarse exterior geometry. Shared public Overpass may refuse this application. Access denials are not bypassed; see [406 diagnostics](docs/LOOKUP-406.md). The new drawing route does not depend on Overpass. Saved models reopen without contacting a footprint provider.
+## Existing data is preserved
 
-## Boundaries
+Marketfield Court's private plan-based/estimated model and controls are unchanged. Building records, documents, notes, tasks, history, backups and local unsent survey requests are retained. Drawing review and closed tasks do not create inspection passes. Private files remain excluded from Git.
 
-This is a single local-owner development workspace built with browser ES modules, native Node HTTP and SQLite, not yet the future production Next.js/PostgreSQL deployment. It is not a guaranteed address-only UK planning crawler or an accurate as-built reconstruction without source review. Publicly viewable plans/photos do not automatically carry commercial reuse rights. Unknown or conflicting dimensions and revisions need human review.
+The old public-footprint provider controls remain in the repository for compatible saved models. The new customer workflow never calls Overpass for geometry or bypasses its refusal. See [406 diagnostics](docs/LOOKUP-406.md).
 
-There is no production tenant authentication, subscription enforcement, payments, contractor messaging, cloud deployment, automatic services inspection or safety certification. AI can misread drawings even when the graph validates. Do not expose this local server to the public internet. No remote provider, private client file or paid API job is needed for the automated tests.
+## Development-only boundary
+
+The customer-style and staff-style screens share the existing authorised **local-owner** session. They are not separate production roles or tenant boundaries. There is no production customer authentication, subscription enforcement, live payment processing or public deployment. Do not expose this local server to the internet. See [Security](docs/SECURITY.md).
+
+This app uses browser ES modules, native Node HTTP and SQLite. A future production deployment needs authenticated organisations, per-record permissions, private object storage and appropriate data/processing licences. AI output validation is not surveying accuracy certification.
 
 ## Private files and GitHub
 
-Work only in this separate repository. `firechecked_app` and `firechecked_portal` are not part of it. Never commit real .env files, uploaded drawings, private models, .data or backups. The private Marketfield pack stays in `private-assets/marketfield` and must be copied separately onto a new computer. This code repository does not contain the client model pack.
+Work only in this repository; `firechecked_app` and `firechecked_portal` are separate. Never commit real `.env`, uploads, private models, `.data` or backups. Keep the Marketfield pack at `private-assets/marketfield` and copy it separately when moving PCs. This repository contains code and synthetic tests, not the client's building pack.
 
-## Trusted-Wi-Fi preview
-
-```sh
-npm run dev:lan
-```
-
-Use the PC address printed in the terminal on the phone, not localhost. Enter the startup access code. Keep the PC running. This is HTTP on a trusted private network, not public hosting. Physical iPhone testing is still required.
+For trusted-Wi-Fi testing, `npm run dev:lan` prints the PC address and access code. Use that address on the phone, not its localhost. Keep the PC running. This is local HTTP, not internet hosting; physical iPhone testing remains necessary.
 
 ## Checks
 
@@ -74,4 +64,4 @@ npm test
 npm run backup
 ```
 
-Tests use synthetic evidence and mocked external services; real local HTTP API tests are included. GitHub CI runs Node 22 and 24. See [v0.4 validation and limitations](docs/BUILD-WORKFLOW.md#validation), [Architecture](docs/ARCHITECTURE.md) and [Security](docs/SECURITY.md).
+Tests exercise real local HTTP/SQLite and geometry using synthetic evidence and mocked external services. GitHub CI runs Node 22 and 24. Paid live AI, council document retrieval, arbitrary-building coverage and physical-device accuracy are not claimed by those tests. Implementation details and limitations are in [Automatic building requests](docs/AUTOMATIC-MODELS.md), [Architecture](docs/ARCHITECTURE.md) and [Security](docs/SECURITY.md).
