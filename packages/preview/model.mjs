@@ -1,4 +1,5 @@
 import { meshModel, bounds } from '../auto-model/geometry.mjs';
+import { validateMapped, mappedModel } from './map-shape.mjs';
 
 export const PREVIEW_NOTICE = 'Illustrative estimate - not surveyed. Building identity, dimensions, windows and unseen elevations may be wrong. Not for fire safety, compliance or construction.';
 export const FINISHES = ['brick','cream-brick','render','concrete','metal'];
@@ -24,9 +25,11 @@ export function validateSpec(value){
       floorHeight:num(b.floorHeight,2.4,5,'storey height'),roof:b.roof,roofHeight:num(b.roofHeight,0,12,'roof height'),finish:b.finish,balconies:b.balconies};
   });
   const list=(v,max)=>{if(!Array.isArray(v)||v.length>max)throw new Error('Too many preview notes.');return v;};
+  if(value.mapped && blocks.length!==1)throw new Error('A mapped outline uses one editable envelope.');
   return {schemaVersion:1,matchLabel:text(value.matchLabel,250)||'Unconfirmed building',matchBasis:value.matchBasis,summary:text(value.summary),blocks,
     facts:list(value.facts||[],30).map(f=>({detail:text(f.detail,400),sourceId:text(f.sourceId,80)})).filter(f=>f.detail),
-    assumptions:list(value.assumptions||[],30).map(v=>text(v,400)).filter(Boolean),usedPhotoIds:list(value.usedPhotoIds||[],4).map(v=>text(v,80))};
+    assumptions:list(value.assumptions||[],30).map(v=>text(v,400)).filter(Boolean),usedPhotoIds:list(value.usedPhotoIds||[],4).map(v=>text(v,80)),
+    ...(value.mapped?{mapped:validateMapped(value.mapped)}:{})};
 }
 const obj=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const str={type:'string'},number={type:'number'},integer={type:'integer'},list=items=>({type:'array',items});
@@ -36,7 +39,9 @@ export const specSchema=obj({schemaVersion:{type:'integer',enum:[1]},matchLabel:
 
 /** Procedural exterior with floors, glazing, frames, balconies and actual pitched roof triangles. */
 export function previewModel(spec,{floor='all',explode=false,cutaway=false}={}){
-  spec=validateSpec(spec);const volumes=[],roofs=[];let sequence=0,windows=0;
+  spec=validateSpec(spec);
+  if(spec.mapped)return mappedModel(spec,{floor,explode,cutaway},colours);
+  const volumes=[],roofs=[];let sequence=0,windows=0;
   const transform=(b,x,y)=>{const a=b.rotation*Math.PI/180;return [b.x+x*Math.cos(a)-y*Math.sin(a),b.y+x*Math.sin(a)+y*Math.cos(a)];};
   function box(b,x,y,w,d,bottom,top,kind,colour,level){
     if(top<=bottom)return;
@@ -112,7 +117,7 @@ export function previewGLB(spec,provenance={}){
   const add=(data,position=false)=>{const bytes=new Uint8Array(new Float32Array(data).buffer),index=bufferViews.length;bufferViews.push({buffer:0,byteOffset:offset,byteLength:bytes.length,target:34962});offset+=bytes.length;chunks.push(bytes);const a={bufferView:index,componentType:5126,count:data.length/3,type:'VEC3'};
     if(position){a.min=[Infinity,Infinity,Infinity];a.max=[-Infinity,-Infinity,-Infinity];data.forEach((v,i)=>{a.min[i%3]=Math.min(a.min[i%3],v);a.max[i%3]=Math.max(a.max[i%3],v);});}accessors.push(a);return accessors.length-1;};
   const meshes=objects.map(o=>({name:o.id,extras:o.extras,primitives:[{attributes:{POSITION:add(o.positions,true),NORMAL:add(o.normals),COLOR_0:add(o.colors)},material:0}]}));
-  const doc={asset:{version:'2.0',generator:'PropertyChecked illustrative preview 0.6.0'},scene:0,scenes:[{nodes:objects.map((_,i)=>i)}],nodes:objects.map((o,i)=>({name:o.id,mesh:i})),meshes,materials:[{doubleSided:true,pbrMetallicRoughness:{metallicFactor:0,roughnessFactor:.75}}],buffers:[{byteLength:offset}],bufferViews,accessors,extras:{...provenance,...model.provenance}};
+  const doc={asset:{version:'2.0',generator:'PropertyChecked illustrative preview 0.8.0'},scene:0,scenes:[{nodes:objects.map((_,i)=>i)}],nodes:objects.map((o,i)=>({name:o.id,mesh:i})),meshes,materials:[{doubleSided:true,pbrMetallicRoughness:{metallicFactor:0,roughnessFactor:.75}}],buffers:[{byteLength:offset}],bufferViews,accessors,extras:{...provenance,...model.provenance}};
   const j=new TextEncoder().encode(JSON.stringify(doc)),jl=(j.length+3)&~3,total=28+jl+offset,out=new Uint8Array(total),v=new DataView(out.buffer);
   v.setUint32(0,0x46546c67,true);v.setUint32(4,2,true);v.setUint32(8,total,true);v.setUint32(12,jl,true);v.setUint32(16,0x4e4f534a,true);out.fill(32,20,20+jl);out.set(j,20);v.setUint32(20+jl,offset,true);v.setUint32(24+jl,0x004e4942,true);let p=28+jl;for(const c of chunks){out.set(c,p);p+=c.length;}return out;
 }

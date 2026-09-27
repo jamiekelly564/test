@@ -1,0 +1,30 @@
+name: Optional open-map diagnostic
+on:
+  workflow_dispatch:
+    inputs:
+      building_name:
+        description: Public building name (no resident details)
+        required: true
+        type: string
+      postcode:
+        description: UK postcode to test once
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  check-map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BUILDING_NAME: ${{ inputs.building_name }}
+      POSTCODE: ${{ inputs.postcode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: One explicit public-data check (no OpenAI call)
+        run: node scripts/check-map.mjs "$BUILDING_NAME" "$POSTCODE"

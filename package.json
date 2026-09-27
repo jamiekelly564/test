@@ -1,6 +1,6 @@
 {
   "name": "propertychecked-platform",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "PropertyChecked local development starter: 3D buildings, capture packages and survey workflow.",
   "type": "module",
@@ -19,6 +19,7 @@
     "predev:lan": "node scripts/doctor.mjs",
     "prestart": "node scripts/doctor.mjs",
     "check:data": "node --env-file-if-exists=.env scripts/check-data.mjs",
-    "setup:ai": "node --env-file-if-exists=.env scripts/setup-ai.mjs"
+    "setup:ai": "node --env-file-if-exists=.env scripts/setup-ai.mjs",
+    "check:map": "node --env-file-if-exists=.env scripts/check-map.mjs"
   }
 }
