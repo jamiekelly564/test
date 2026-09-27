@@ -1,0 +1,9 @@
+/* Architectural controls: keep the model primary and detail controls optional. */
+.detail-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 18px;border-top:1px solid #e5ece8;background:#f8faf8;font-size:12px}
+.detail-toolbar label{display:flex;gap:8px;align-items:center;margin:0;white-space:nowrap}.detail-toolbar select{width:auto;min-height:36px;padding:6px 24px 6px 10px;margin:0}
+.detail-toolbar span{color:#627873;flex:1;min-width:160px}
+.detail-status{border-left:3px solid #71a89a;background:#f3f7f4;padding:12px 14px;margin:16px 0;font-size:12px;line-height:1.6}.detail-status p{margin:5px 0 0}
+.interior-controls{display:flex;flex-wrap:wrap;gap:12px;padding:14px 18px;background:#fff9eb;border-top:1px solid #ecdfc5;font-size:12px}.interior-controls[hidden]{display:none}
+.interior-controls label{min-width:130px;flex:1;margin:0}.interior-controls small{flex-basis:100%;color:#735e37}.interior-controls select{margin:5px 0 0;min-height:38px;font-size:12px}.interior-controls .check{align-self:center}
+#architecture-controls input[type=color]{padding:3px;height:40px;min-width:0;width:100%;cursor:pointer}
+@media(max-width:600px){.detail-toolbar,.interior-controls{padding:10px 12px;gap:8px}.interior-controls label{min-width:120px}.detail-toolbar span{font-size:11px}}

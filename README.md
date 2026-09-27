@@ -1,6 +1,10 @@
-# PropertyChecked 0.9.0
+# PropertyChecked 0.10.0
 
 Local building-management workspace with photo-first 3D estimates and a separate evidence-based reconstruction workflow. Models are interactive geometry, not generated pictures. They are not surveys or automated fire-safety assessments.
+
+## Architectural detail
+
+v0.10 adds per-elevation photo-informed window, facade, entrance and roof geometry, editable architectural colours and proportions, and richer explicitly fictional furnished interior examples. Existing models need an explicit photo-based rebuild to acquire detailed observations. See [Architectural detail and validation](docs/ARCHITECTURAL-DETAIL.md).
 
 ## Update and open
 

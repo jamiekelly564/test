@@ -1,3 +1,4 @@
+import { defaultFacade, defaultArchitecture, editArchitecture } from '/modules/preview/architecture.mjs';
 import { escapeHtml as e } from './api.js';
 import { defaultSpec, previewModel } from '/modules/preview/model.mjs';
 import { withConcept, conceptSVG, CONCEPT_NOTICE } from '/modules/preview/concept.mjs';
@@ -5,6 +6,8 @@ import { PreviewViewer } from '/modules/preview/viewer.mjs';
 import { RELEASE, propertyInput, postcodeValue, modelBasis, stageSteps, statusCopy, retryRemaining, editBlock, matchesSaved, safeSource, supportSummary } from '/modules/preview/ux.mjs';
 
 const $ = id => document.getElementById(id);
+const detailInputs={'detail-window-style':'windowStyle','detail-surface':'surface','detail-window-width':'windowWidth','detail-window-height':'windowHeight','detail-spacing':'spacing','detail-panes':'panesX','detail-frame':'frameColour','detail-wall':'wallColour','detail-roof':'roofColour'};
+const interiorOptions=()=>({layout:$('interior-layout').value,density:Number($('interior-density').value),furniture:$('interior-furniture').checked,fullWalls:$('interior-walls').value==='full'});
 const uuid = () => globalThis.crypto?.randomUUID?.() || `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const S = { current:null, viewer:null, rendered:'', shape:'', csrf:'', authenticated:false, online:false, busy:false, screen:'welcome', token:0, timer:0, failures:0, config:{researchConfigured:false}, saved:[], edit:null, editVersion:0, editBase:'', editError:'', dirty:false, block:0, mode:'exterior', expanded:false, pending:null, hasPlans:null, planBuilding:null };
 const notice = value => { $('notice').textContent = value || ''; $('notice').hidden = !value; };
@@ -55,6 +58,7 @@ function controls() {
   $('wrong-building').disabled=S.busy;
   $('block').disabled=!p?.id||S.busy;
   for(const id of ['floors-edit','width-edit','depth-edit','roof-edit','finish-edit','balconies-edit','columns-edit','fewer-floors','more-floors'])$(id).disabled=!p?.id||S.busy;
+  for(const id of Object.keys(detailInputs))$(id).disabled=!p?.id||S.busy;
   $('edit-conflict').hidden=!conflict;
   $('view-draft').hidden=!S.dirty;
   $('save-state').textContent=S.dirty?'Unsaved changes':!p?.id?'Not yet saved':!S.online?'Last saved on this PC':`Saved on this PC${p.updated_at?' / '+date(p.updated_at):''}`;
@@ -79,20 +83,26 @@ function editFields() {
   const b=spec.blocks[S.block];
   for(const [id,key] of [['floors-edit','floors'],['width-edit','width'],['depth-edit','depth'],['roof-edit','roof'],['finish-edit','finish'],['columns-edit','columns']])$(id).value=b[key];
   $('balconies-edit').checked=b.balconies;
+  const architecture=spec.architecture||defaultArchitecture(spec),profile=architecture.facades.find(p=>p.block===S.block&&p.edge===-1)||architecture.facades.find(p=>p.block===S.block)||defaultFacade(b,S.block);
+  for(const [id,key] of Object.entries(detailInputs))$(id).value=key==='roofColour'?architecture.roofColour:profile[key];
 }
 function renderModel(force=false,fit=false) {
   const p=S.current;if(!p)return;
   const spec=S.edit||p.spec,n=Math.max(...spec.blocks.map(b=>b.floors)),old=$('floor').value;
   if($('floor').options.length!==n+1){$('floor').innerHTML='<option value="all">All floors</option>'+Array.from({length:n},(_,i)=>`<option value="${i}">${i===0?'Ground':'Level '+i} (est.)</option>`).join('');$('floor').value=old==='all'||Number(old)<n?old:'all';}
-  const key=JSON.stringify([spec,$('floor').value,S.mode]);if(key===S.rendered&&!force)return;
+  if(S.mode==='concept'&&$('floor').value==='all')$('floor').value='0';
+  const key=JSON.stringify([spec,$('floor').value,S.mode,$('model-detail').value,interiorOptions()]);if(key===S.rendered&&!force)return;
   try{
-    let model=previewModel(spec,{floor:$('floor').value,cutaway:S.mode==='cutaway'||S.mode==='concept',explode:S.mode==='exploded'});
-    $('concept-panel').hidden=S.mode!=='concept';if(S.mode==='concept'){ $('concept-svg').innerHTML=conceptSVG(model);model=withConcept(model); }
+    let model=previewModel(spec,{floor:$('floor').value,cutaway:S.mode==='cutaway'||S.mode==='concept',explode:S.mode==='exploded',detail:$('model-detail').value});
+    $('concept-panel').hidden=S.mode!=='concept';$('interior-controls').hidden=S.mode!=='concept';if(S.mode==='concept'){ $('concept-svg').innerHTML=conceptSVG(model,interiorOptions());model=withConcept(model,interiorOptions()); }
+    $('geometry-detail-note').textContent=model.detail?`${model.detail.windows} window openings / ${model.detail.parts} architectural parts${model.detail.warnings.length?' / some detail simplified':''}`:'Legacy simple geometry. Rebuild from your photos for architectural detail.';
+    const a=spec.architecture;
+    $('architecture-status').textContent=a?`${a.facades.length} facade profiles, ${a.entrances.length} entrances and ${a.roofFeatures.length} roof features. ${a.facades.some(p=>p.sourcePhotoIds.length)?'Photo references are attached; proportions and orientation remain estimates.':'Detail is generic or user-adjusted, not measured.'}`:'This saved model predates architectural details. Open Add floor plans or photos and rebuild using your exterior photographs.';
     const shape=JSON.stringify(spec),changed=shape!==S.shape;
     if(S.viewer)S.viewer.update(model);else S.viewer=new PreviewViewer($('viewer'),model);
     if(fit)S.viewer.reset();else if(changed)S.viewer.fit();
     S.shape=shape;S.rendered=key;
-    $('stats').innerHTML=`<div><strong>~${n}</strong>Estimated storeys</div><div><strong>${spec.blocks.length}</strong>Building sections</div><div><strong>Unknown</strong>Internal layout</div>`;
+    $('stats').innerHTML=`<div><strong>~${n}</strong>Estimated storeys</div><div><strong>${spec.blocks.length}</strong>Building sections</div><div><strong>${S.mode==='concept'?'Invented':'Unknown'}</strong>Internal layout</div>`;
     $('view-help').textContent=S.mode==='concept'?CONCEPT_NOTICE:S.mode==='cutaway'?'Empty floor envelopes only. Rooms and escape routes are unknown.':'Drag to rotate. Pinch or scroll to zoom. Arrow keys also rotate.';
   }catch{notice('This view could not render. Try Fit or a different floor. The saved model is unchanged.');}
 }
@@ -221,6 +231,15 @@ function captureEdits() {
 for(const id of ['floors-edit','width-edit','depth-edit','columns-edit','roof-edit','finish-edit','balconies-edit']){
   $(id).addEventListener('input',captureEdits);
 }
+function captureArchitecture(event){
+  if(!S.current?.id)return;
+  if(!S.dirty){S.edit=structuredClone(S.current.spec);S.editVersion=S.current.version;S.editBase=JSON.stringify(S.current.spec);}
+  S.dirty=true;
+  try{const key=detailInputs[event.target.id];S.edit=editArchitecture(S.edit,S.block,{[key]:event.target.value});S.editError='';$('edit-error').textContent='';renderModel();}
+  catch(error){S.editError=error.message;$('edit-error').textContent=S.editError;}controls();
+}
+for(const id of Object.keys(detailInputs))$(id).addEventListener('input',captureArchitecture);
+for(const id of ['model-detail','interior-layout','interior-density','interior-walls','interior-furniture'])$(id).addEventListener('change',()=>{renderModel(true);});
 $('block').onchange=()=>{if(S.editError){$('block').value=String(S.block);notice('Correct the invalid dimension or discard your changes before changing section.');return;}S.block=Number($('block').value);editFields();};
 for(const [id,delta] of [['fewer-floors',-1],['more-floors',1]])$(id).onclick=()=>{$('floors-edit').value=Math.max(1,Math.min(25,Number($('floors-edit').value)+delta));captureEdits();};
 $('adjust-form').onsubmit=event=>{event.preventDefault();act(async()=>{
@@ -240,7 +259,7 @@ function expanded(on){S.expanded=on;document.body.classList.toggle('model-expand
 $('expand').onclick=()=>expanded(!S.expanded);
 window.addEventListener('keydown',event=>{
   if(!S.expanded)return;if(event.key==='Escape'){event.preventDefault();expanded(false);}
-  if(event.key==='Tab'){const all=[...$('model-card').querySelectorAll('button,select,canvas[tabindex]')].filter(n=>!n.disabled),i=all.indexOf(document.activeElement);if(event.shiftKey&&i<=0){event.preventDefault();all.at(-1)?.focus();}else if(!event.shiftKey&&i===all.length-1){event.preventDefault();all[0]?.focus();}}
+  if(event.key==='Tab'){const all=[...$('model-card').querySelectorAll('button,select,input,canvas[tabindex]')].filter(n=>!n.disabled&&n.getClientRects().length),i=all.indexOf(document.activeElement);if(event.shiftKey&&i<=0){event.preventDefault();all.at(-1)?.focus();}else if(!event.shiftKey&&i===all.length-1){event.preventDefault();all[0]?.focus();}}
 });
 $('reconnect').onclick=()=>act(async()=>{
   if(!await session())return;
