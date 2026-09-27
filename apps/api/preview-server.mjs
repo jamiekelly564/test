@@ -7,10 +7,11 @@ import { createApp } from './server.mjs';
 import { featureStatus } from '../../packages/domain/catalog.mjs';
 import { HttpError, record } from './validation.mjs';
 import { createPreviewService } from './preview/service.mjs';
+import { createPhotoFlow } from './photo-flow/service.mjs';
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export const VERSION='0.8.1';
+export const VERSION='0.9.0';
 const CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
-const files={'/':'apps/web/public/index.html','/index.html':'apps/web/public/index.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
+const files={'/build':'apps/web/public/photo-first.html','/advanced-build':'apps/web/public/build.html','/photo-first.js':'apps/web/public/photo-first.js','/photo-first.css':'apps/web/public/photo-first.css','/modules/preview/concept.mjs':'packages/preview/concept.mjs','/':'apps/web/public/index.html','/index.html':'apps/web/public/index.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
   '/modules/auto-model/geometry.mjs':'packages/auto-model/geometry.mjs','/modules/auto-model/viewer.mjs':'packages/auto-model/viewer.mjs'};
 const send=(req,res,status,value,type='application/json; charset=utf-8')=>{const bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value));res.writeHead(status,{'Content-Type':type,'Content-Length':bytes.length});res.end(req.method==='HEAD'?undefined:bytes);};
 async function jsonBody(req){
@@ -21,14 +22,32 @@ async function jsonBody(req){
 /** Layer estimated previews over the existing app without weakening its evidence validation. */
 export function createPreviewApp(options={}){
   const app=createApp(options),preview=createPreviewService({workspace:app.workspace,...options.preview}),old=app.server.listeners('request');
+  const photoFlow=createPhotoFlow({workspace:app.workspace,preview,uploadDir:join(resolve(options.dataDir||process.env.PROPERTYCHECKED_DATA_DIR||join(ROOT,'.data')),'uploads'),...options.photoFlow});
   app.server.removeAllListeners('request');
   app.server.on('request',async(req,res)=>{
-    const path=String(req.url||'').split('?')[0],ours=!!files[path]||path.startsWith('/api/previews')||path==='/api/status';
+    const path=String(req.url||'').split('?')[0],ours=!!files[path]||path.startsWith('/api/previews')||path.startsWith('/api/photo-flow')||path==='/api/status';
     if(!ours){for(const listener of old)listener.call(app.server,req,res);return;}
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Content-Security-Policy',CSP);res.setHeader('Cross-Origin-Resource-Policy','same-origin');
     try{
       app.security.checkHost(req);const method=req.method;
       if(path.startsWith('/api/'))app.security.requireSession(req,!['GET','HEAD'].includes(method));
+      if(path==='/api/photo-flow/jobs'&&method==='POST'){send(req,res,201,photoFlow.create(await jsonBody(req)));return;}
+      const fb=/^\/api\/photo-flow\/buildings\/([a-zA-Z0-9-]+)$/.exec(path);
+      if(fb&&method==='GET'){send(req,res,200,photoFlow.building(fb[1]));return;}
+      const fa=/^\/api\/photo-flow\/assets\/([a-zA-Z0-9-]+)$/.exec(path);
+      if(fa&&['GET','HEAD'].includes(method)){const image=await photoFlow.asset(fa[1]);send(req,res,200,image.bytes,image.mime);return;}
+      const fj=/^\/api\/photo-flow\/jobs\/([a-zA-Z0-9-]+)(?:\/(search|reject|build|stop|upload))?$/.exec(path);
+      if(fj){
+        const [,id,action]=fj;
+        if(method==='GET'&&!action){send(req,res,200,photoFlow.get(id));return;}
+        if(method==='POST'&&action==='upload'){
+          if(Number(req.headers['content-length'])>25*1024*1024)throw new HttpError(413,'The file exceeds 25 MB.');
+          const parts=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>25*1024*1024)throw new HttpError(413,'The file exceeds 25 MB.');parts.push(chunk);}
+          let name;try{name=decodeURIComponent(req.headers['x-file-name']||'');}catch{throw new HttpError(400,'Invalid file name.');}
+          send(req,res,201,await photoFlow.upload(id,{name,kind:req.headers['x-file-kind'],bytes:Buffer.concat(parts),requestKey:req.headers['x-request-key'],rightsConfirmed:req.headers['x-file-permission']==='yes'}));return;
+        }
+        if(method==='POST'&&['search','reject','build','stop'].includes(action)){send(req,res,202,photoFlow[action](id,await jsonBody(req)));return;}
+      }
       if(path==='/api/status'&&method==='GET'){send(req,res,200,{version:VERSION,mode:'local-development',database:'SQLite on this PC',cloudHosted:false,githubPublished:null,modelInstalled:!!app.workspace.manifest,postcodesEnabled:app.workspace.setting('postcodes_enabled','false')==='true',features:featureStatus});return;}
       if(path==='/api/previews/config'&&method==='GET'){send(req,res,200,{version:VERSION,...preview.config()});return;}
       if(path==='/api/previews'&&method==='POST'){send(req,res,201,preview.create(await jsonBody(req)));return;}
@@ -47,7 +66,7 @@ export function createPreviewApp(options={}){
       throw new HttpError(404,'Preview route not found.');
     }catch(e){if(!res.headersSent)send(req,res,e instanceof HttpError?e.status:500,{error:e instanceof HttpError?e.message:'Preview request failed safely. Your saved model is unchanged.'});else res.destroy();}
   });
-  return {...app,preview,close:async()=>{await preview.close();await app.close();}};
+  return {...app,preview,photoFlow,close:async()=>{await photoFlow.close();await preview.close();await app.close();}};
 }
 async function run(){
   try{loadEnvFile(join(ROOT,'.env'));}catch(e){if(e.code!=='ENOENT')throw new Error('Could not load the project .env file.');}
