@@ -11,6 +11,7 @@ import { createAutoService } from './auto-model/service.mjs';
 import { ProviderError } from './auto-model/network.mjs';
 import { createEvidenceRouter } from './evidence/router.mjs';
 import { createWorkflow } from './evidence/workflow.mjs';
+import { createConcierge } from './concierge/service.mjs';
 import { HttpError, buildingInput, normalisePostcode, surveyInput, taskInput, taskPatch, locationPatch, filenameInput, record } from './validation.mjs';
 import { tiers, surveyModules, featureStatus } from '../../packages/domain/catalog.mjs';
 
@@ -52,6 +53,7 @@ export function createApp(options={}){
   const auto=createAutoService(workspace,options.auto||{});
   const evidence=createEvidenceRouter({workspace,uploadDir,send,jsonBody,readBody,...(options.evidence||{})});
   const workflow=createWorkflow({workspace,store:evidence.store,uploadDir,send,jsonBody,...(options.workflow||{})});
+  const concierge=createConcierge({workspace,store:evidence.store,workflow,uploadDir,send,jsonBody,readBody,...(options.concierge||{})});
   const lookupDefault=process.env.POSTCODE_LOOKUP_ENABLED==='true'?'true':'false';
   const requestCounts=new Map();
   const server=createServer(async(req,res)=>{
@@ -63,9 +65,10 @@ export function createApp(options={}){
       if(path==='/api/session'&&method==='GET')return send(req,res,200,security.session(req,res));
       if(path==='/api/session'&&method==='POST'){const b=await jsonBody(req);const s=security.authenticate(req,res,b.code);return send(req,res,200,{authenticated:true,csrf:s.csrf,mode:'trusted-lan'});}
       if(path.startsWith('/api/'))security.requireSession(req,!['GET','HEAD'].includes(method));
+      if(await concierge.handle(req,res,path,method))return;
       if(await workflow.handle(req,res,path,method))return;
       if(await evidence.handle(req,res,path,method))return;
-      if(path==='/api/status'&&method==='GET')return send(req,res,200,{version:'0.4.0',mode:'local-development',database:'SQLite on this PC',cloudHosted:false,githubPublished:null,modelInstalled:!!workspace.manifest,postcodesEnabled:workspace.setting('postcodes_enabled',lookupDefault)==='true',features:featureStatus});
+      if(path==='/api/status'&&method==='GET')return send(req,res,200,{version:'0.5.0',mode:'local-development',database:'SQLite on this PC',cloudHosted:false,githubPublished:null,modelInstalled:!!workspace.manifest,postcodesEnabled:workspace.setting('postcodes_enabled',lookupDefault)==='true',features:featureStatus});
       if(path==='/api/catalog'&&method==='GET')return send(req,res,200,{tiers,modules:surveyModules,pricingStatus:'Quotation required - prices not configured',paymentsEnabled:false});
       if(path==='/api/settings'&&method==='PATCH'){const b=await jsonBody(req);if(typeof b.postcodesEnabled!=='boolean')throw new HttpError(400,'postcodesEnabled must be true or false.');workspace.setSetting('postcodes_enabled',String(b.postcodesEnabled));return send(req,res,200,{postcodesEnabled:b.postcodesEnabled});}
       if(path.startsWith('/api/postcodes/')&&method==='GET'){
@@ -119,7 +122,7 @@ export function createApp(options={}){
       }
       if(path.startsWith('/api/'))throw new HttpError(404,'API route not found.');
       if(!['GET','HEAD'].includes(method))throw new HttpError(405,'Method not allowed.');
-      const staticFiles={'/build':'build.html','/build.html':'build.html','/build.js':'build.js','/build.css':'build.css','/model-panel.js':'model-panel.js','/model-panel.css':'model-panel.css','/studio':'studio.html','/studio.html':'studio.html','/studio.css':'studio.css','/studio.js':'studio.js','/workspace-entry.js':'workspace-entry.js','/':'index.html','/index.html':'index.html','/app.js':'app.js','/api.js':'api.js','/icons.js':'icons.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
+      const staticFiles={'/start':'automatic.html','/automatic.html':'automatic.html','/automatic.js':'automatic.js','/automatic.css':'automatic.css','/operations':'operations.html','/operations.js':'operations.js','/customer-entry.js':'customer-entry.js','/build':'build.html','/build.html':'build.html','/build.js':'build.js','/build.css':'build.css','/model-panel.js':'model-panel.js','/model-panel.css':'model-panel.css','/studio':'studio.html','/studio.html':'studio.html','/studio.css':'studio.css','/studio.js':'studio.js','/workspace-entry.js':'workspace-entry.js','/':'index.html','/index.html':'index.html','/app.js':'app.js','/api.js':'api.js','/icons.js':'icons.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
       let filename=staticFiles[path]?join(ROOT,'apps/web/public',staticFiles[path]):null;
       if(path==='/shared/catalog.mjs')filename=join(ROOT,'packages/domain/catalog.mjs');
       const autoStatic={'/auto-page.js':'apps/web/public/auto-page.js','/auto.css':'apps/web/public/auto.css','/shared/geometry.mjs':'packages/auto-model/geometry.mjs','/shared/exterior-viewer.mjs':'packages/auto-model/viewer.mjs'};
@@ -142,7 +145,7 @@ export function createApp(options={}){
     }
   });
   server.requestTimeout=30000;server.headersTimeout=10000;
-  return{server,workspace,security,close:()=>Promise.all([evidence.close(),workflow.close()]).then(()=>new Promise(resolve=>{server.close(()=>{workspace.close();resolve();});server.closeIdleConnections();}))};
+  return{server,workspace,security,concierge,close:()=>Promise.all([concierge.close(),evidence.close(),workflow.close()]).then(()=>new Promise(resolve=>{server.close(()=>{workspace.close();resolve();});server.closeIdleConnections();}))};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   if(process.env.NODE_ENV==='production'){console.error('This starter is a local preview, not a production portal. Read docs/SECURITY.md before deploying.');process.exit(1);}
@@ -151,7 +154,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
   const app=createApp({lan});
   app.server.on('error',error=>{console.error(error.code==='EADDRINUSE'?`Port ${port} is busy. Stop the other local server or change PORT in .env.`:error.message);app.workspace.close();process.exit(1);});
   app.server.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>{
-    console.log(`\nPropertyChecked 0.4.0 - Building reconstruction workflow\nOpen http://localhost:${port}\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\n`);
+    console.log(`\nPropertyChecked 0.5.0 - Automatic building requests\nOpen http://localhost:${port}\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\n`);
     if(lan){console.log('TRUSTED HOME/OFFICE WIFI ONLY. This is HTTP, not an internet deployment.');console.log(`Access code: ${app.security.code}`);for(const ip of app.security.allowedHosts)if(!['localhost','127.0.0.1','[::1]'].includes(ip))console.log(`iPhone browser: http://${ip}:${port}`);}
     console.log('No payment, email, appointment or cloud deployment is made by this starter.\n');
   });
