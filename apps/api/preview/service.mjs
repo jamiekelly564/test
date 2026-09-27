@@ -1,3 +1,4 @@
+import { withoutPhotoClaims } from '../../../packages/preview/architecture.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { HttpError, normalisePostcode, text, record } from '../validation.mjs';
 import { defaultSpec, validateSpec, previewModel, previewGLB, PREVIEW_NOTICE } from '../../../packages/preview/model.mjs';
@@ -104,7 +105,7 @@ export function createPreviewService({workspace,research=createMappedResearch({w
       const sourceKey=value=>JSON.stringify(value?{...value,manualDimensions:false}:null);
       if(sourceKey(spec.mapped)!==sourceKey(current.spec.mapped))throw new HttpError(409,'Mapped source geometry changed. Reload before adjusting the envelope.');
       // A completed local edit is atomic and has one persistent undo point.
-      spec.facts=[];spec.usedPhotoIds=[];spec.assumptions=[...spec.assumptions.slice(0,28),'Dimensions or appearance were adjusted by the user, not measured.'];
+      spec.facts=[];spec.usedPhotoIds=[];if(spec.architecture)spec.architecture=withoutPhotoClaims(spec.architecture);spec.assumptions=[...spec.assumptions.slice(0,28),'Dimensions or appearance were adjusted by the user, not measured.'];
       if(spec.mapped)spec.mapped.manualDimensions=true;
       workers.get(id)?.controller.abort();
       db.exec('BEGIN IMMEDIATE');

@@ -1,3 +1,5 @@
+import { architectureSchema, validateArchitecture } from './architecture.mjs';
+import { detailedModel } from './detailed-model.mjs';
 import { meshModel, bounds } from '../auto-model/geometry.mjs';
 import { validateMapped, mappedModel } from './map-shape.mjs';
 
@@ -29,17 +31,19 @@ export function validateSpec(value){
   return {schemaVersion:1,matchLabel:text(value.matchLabel,250)||'Unconfirmed building',matchBasis:value.matchBasis,summary:text(value.summary),blocks,
     facts:list(value.facts||[],30).map(f=>({detail:text(f.detail,400),sourceId:text(f.sourceId,80)})).filter(f=>f.detail),
     assumptions:list(value.assumptions||[],30).map(v=>text(v,400)).filter(Boolean),usedPhotoIds:list(value.usedPhotoIds||[],4).map(v=>text(v,80)),
+    ...(value.architecture?{architecture:validateArchitecture(value.architecture,blocks)}:{}),
     ...(value.mapped?{mapped:validateMapped(value.mapped)}:{})};
 }
 const obj=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const str={type:'string'},number={type:'number'},integer={type:'integer'},list=items=>({type:'array',items});
 export const specSchema=obj({schemaVersion:{type:'integer',enum:[1]},matchLabel:str,matchBasis:{type:'string',enum:['unresolved','likely','ambiguous']},summary:str,
   blocks:list(obj({label:str,x:number,y:number,width:number,depth:number,rotation:number,floors:integer,floorHeight:number,roof:{type:'string',enum:ROOFS},roofHeight:number,finish:{type:'string',enum:FINISHES},columns:integer,balconies:{type:'boolean'}})),
-  facts:list(obj({detail:str,sourceId:str})),assumptions:list(str),usedPhotoIds:list(str)});
+  facts:list(obj({detail:str,sourceId:str})),assumptions:list(str),usedPhotoIds:list(str),architecture:architectureSchema});
 
 /** Procedural exterior with floors, glazing, frames, balconies and actual pitched roof triangles. */
-export function previewModel(spec,{floor='all',explode=false,cutaway=false}={}){
+export function previewModel(spec,{floor='all',explode=false,cutaway=false,detail='detailed'}={}){
   spec=validateSpec(spec);
+  if(spec.architecture&&detail!=='simple'){const shell={...spec};delete shell.architecture;return detailedModel(spec,{floor,explode,cutaway,detail},previewModel(shell,{floor,explode,cutaway,detail:'simple'}));}
   if(spec.mapped)return mappedModel(spec,{floor,explode,cutaway},colours);
   const volumes=[],roofs=[];let sequence=0,windows=0;
   const transform=(b,x,y)=>{const a=b.rotation*Math.PI/180;return [b.x+x*Math.cos(a)-y*Math.sin(a),b.y+x*Math.sin(a)+y*Math.cos(a)];};
@@ -107,7 +111,7 @@ export function previewMeshes(model){
   for(const roof of model.roofs){
     const positions=[],normals=[],colors=[];
     for(const tri of roof.triangles){const [a,b,c]=tri,ab=b.map((v,i)=>v-a[i]),ac=c.map((v,i)=>v-a[i]);let n=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];const l=Math.hypot(...n)||1;n=n.map(v=>v/l);if(n[1]<0)n=n.map(v=>-v);for(const p of tri){positions.push(...p);normals.push(...n);colors.push(...roof.colour);}}
-    objects.push({id:roof.id,positions,normals,colors,extras:{estimated:true,notSurveyed:true,kind:'pitched roof',level:roof.level}});
+    objects.push({id:roof.id,positions,normals,colors,extras:{estimated:true,notSurveyed:true,kind:'pitched roof',level:roof.level,material:roof.material||6}});
   }
   return objects;
 }
@@ -116,8 +120,8 @@ export function previewGLB(spec,provenance={}){
   const model=previewModel(spec),objects=previewMeshes(model),chunks=[],bufferViews=[],accessors=[];let offset=0;
   const add=(data,position=false)=>{const bytes=new Uint8Array(new Float32Array(data).buffer),index=bufferViews.length;bufferViews.push({buffer:0,byteOffset:offset,byteLength:bytes.length,target:34962});offset+=bytes.length;chunks.push(bytes);const a={bufferView:index,componentType:5126,count:data.length/3,type:'VEC3'};
     if(position){a.min=[Infinity,Infinity,Infinity];a.max=[-Infinity,-Infinity,-Infinity];data.forEach((v,i)=>{a.min[i%3]=Math.min(a.min[i%3],v);a.max[i%3]=Math.max(a.max[i%3],v);});}accessors.push(a);return accessors.length-1;};
-  const meshes=objects.map(o=>({name:o.id,extras:o.extras,primitives:[{attributes:{POSITION:add(o.positions,true),NORMAL:add(o.normals),COLOR_0:add(o.colors)},material:0}]}));
-  const doc={asset:{version:'2.0',generator:'PropertyChecked illustrative preview 0.8.0'},scene:0,scenes:[{nodes:objects.map((_,i)=>i)}],nodes:objects.map((o,i)=>({name:o.id,mesh:i})),meshes,materials:[{doubleSided:true,pbrMetallicRoughness:{metallicFactor:0,roughnessFactor:.75}}],buffers:[{byteLength:offset}],bufferViews,accessors,extras:{...provenance,...model.provenance}};
+  const meshes=objects.map(o=>({name:o.id,extras:o.extras,primitives:[{attributes:{POSITION:add(o.positions,true),NORMAL:add(o.normals),COLOR_0:add(o.colors)},material:o.extras.material===4?1:o.extras.material===5?2:0}]}));
+  const doc={asset:{version:'2.0',generator:'PropertyChecked architectural preview 0.10.0'},scene:0,scenes:[{nodes:objects.map((_,i)=>i)}],nodes:objects.map((o,i)=>({name:o.id,mesh:i})),meshes,materials:[{name:'Architectural surface',doubleSided:true,pbrMetallicRoughness:{metallicFactor:0,roughnessFactor:.82}},{name:'Opaque reflective glazing estimate',doubleSided:true,pbrMetallicRoughness:{metallicFactor:.25,roughnessFactor:.2}},{name:'Frames and metalwork',doubleSided:true,pbrMetallicRoughness:{metallicFactor:.45,roughnessFactor:.38}}],buffers:[{byteLength:offset}],bufferViews,accessors,extras:{...provenance,...model.provenance}};
   const j=new TextEncoder().encode(JSON.stringify(doc)),jl=(j.length+3)&~3,total=28+jl+offset,out=new Uint8Array(total),v=new DataView(out.buffer);
   v.setUint32(0,0x46546c67,true);v.setUint32(4,2,true);v.setUint32(8,total,true);v.setUint32(12,jl,true);v.setUint32(16,0x4e4f534a,true);out.fill(32,20,20+jl);out.set(j,20);v.setUint32(20+jl,offset,true);v.setUint32(24+jl,0x004e4942,true);let p=28+jl;for(const c of chunks){out.set(c,p);p+=c.length;}return out;
 }

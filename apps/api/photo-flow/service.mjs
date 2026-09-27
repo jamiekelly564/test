@@ -1,3 +1,4 @@
+import { describeEnvelope } from '../../../packages/preview/architecture.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -151,7 +152,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
           update({stage:'appearance',message:`Using ${images.length} selected photo${images.length===1?'':'s'} to estimate the exterior.`,data:{usage}});
           try {
             const base={...spec};delete base.mapped;
-            result=await research.run({name:b.name,postcode:b.postcode,spec:base,prepared,usage,signal,onProgress:async progress=>{
+            result=await research.run({name:b.name,postcode:b.postcode,spec:base,envelope:describeEnvelope(spec),prepared,usage,signal,onProgress:async progress=>{
               live();if(progress.spec)partial={...progress};update({stage:progress.stage==='checking'?'checking':'appearance',message:progress.message,data:{usage}});
             }});newVisualResult=true;
           }catch(e){live();newVisualResult=Boolean(partial?.spec);result=partial?.spec?{...partial,message:'The first visual estimate is saved; the final check did not finish.'}:{...result,message:'Photo interpretation did not finish. The available outline is retained, not presented as a photo-matched reconstruction.'};

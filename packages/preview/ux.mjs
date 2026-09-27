@@ -1,6 +1,7 @@
+import { defaultFacade } from './architecture.mjs';
 import { validateSpec } from './model.mjs';
 
-export const RELEASE = '0.9.0';
+export const RELEASE = '0.10.0';
 export function postcodeValue(value) {
   const raw = String(value || '').toUpperCase().replace(/\s/g, '');
   if (!/^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/.test(raw)) return null;
@@ -59,6 +60,11 @@ export function editBlock(spec, index, values) {
   for (const key of ['floors', 'width', 'depth', 'columns']) if (values[key] !== undefined) b[key] = Number(values[key]);
   for (const key of ['roof', 'finish', 'balconies']) if (values[key] !== undefined) b[key] = values[key];
   b.roofHeight = b.roof === 'flat' ? 0 : Math.max(1.5, b.roofHeight);
+  if(next.architecture){const old=spec.blocks[index],base=defaultFacade(b,index);for(const profile of next.architecture.facades.filter(p=>p.block===index)){
+    if(b.finish!==old.finish){profile.wallColour=base.wallColour;profile.surface=base.surface;}
+    if(b.balconies!==old.balconies)profile.balcony=b.balconies?'projecting':'none';
+    if(b.columns!==old.columns)profile.spacing=base.spacing;
+  }}
   if(next.mapped && ['floors','width','depth'].some(key=>values[key]!==undefined&&Number(values[key])!==spec.blocks[index][key]))next.mapped.manualDimensions=true;
   return validateSpec(next);
 }

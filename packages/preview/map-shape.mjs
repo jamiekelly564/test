@@ -147,7 +147,8 @@ export function applyMapped(spec, mapped) {
   const facts = (spec.facts || []).filter(f => !/^map-|^scan-/.test(f.sourceId)).slice(0, 24);
   facts.push({ detail: `Footprint from ${MAP_SOURCE}, release ${data.release}.`, sourceId: 'map-ms' });
   if (data.heightM !== null) facts.push({ detail: `Source height estimate ${data.heightM.toFixed(1)} m (${data.heightBasis}); not site verified.`, sourceId: data.heightBasis === 'lidar-estimate' ? 'scan-ea' : 'map-ms' });
-  return { ...spec, blocks: [b], mapped: data, matchBasis: 'ambiguous', matchLabel: 'Postcode-based building guess', facts,
+  const architecture=spec.architecture?{...spec.architecture,facades:spec.architecture.facades.filter(p=>p.block===0),entrances:spec.architecture.entrances.filter(p=>p.block===0),roofFeatures:spec.architecture.roofFeatures.filter(p=>p.block===0)}:null;
+  return { ...spec, ...(architecture?{architecture}:{}), blocks: [b], mapped: data, matchBasis: 'ambiguous', matchLabel: 'Postcode-based building guess', facts,
     summary: 'The outline is drawn from reusable map data. The postcode-based building match, facade and floor layout are unverified estimates.',
     assumptions: [...notes, ...(spec.assumptions || [])].slice(0, 30) };
 }

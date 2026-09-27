@@ -1,3 +1,4 @@
+import { describeEnvelope } from '../../../packages/preview/architecture.mjs';
 import { createMapProvider } from './provider.mjs';
 import { applyMapped, MAP_SOURCE_URL, MAP_LICENCE_URL, MAP_SOURCE } from '../../../packages/preview/map-shape.mjs';
 
@@ -49,7 +50,7 @@ export function mapResearch(base, provider) {
         message:mapped ? 'Map-based estimate saved without an AI charge. The building match, roof and internal layout are unverified.' : 'The starting estimate is saved. Open map data was unavailable and AI is not configured.' };
       // The exact source polygon is applied independently after every AI pass.
       const baseSpec = { ...initial }; delete baseSpec.mapped;
-      const result = await base.run({ ...args, spec:baseSpec, onProgress: async progress => {
+      const result = await base.run({ ...args, spec:baseSpec, envelope:describeEnvelope(initial), onProgress: async progress => {
         signal.throwIfAborted();
         await onProgress({ ...progress, ...(progress.spec ? { spec:mappedSpec(progress.spec) } : {}),
           basis:mapped ? 'map-based-estimate' : progress.basis, ...(progress.references ? {references:mergeRefs(progress.references)} : {}), mapData });
