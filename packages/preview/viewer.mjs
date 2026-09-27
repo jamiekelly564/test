@@ -1,16 +1,26 @@
 import { ExteriorViewer } from '../auto-model/viewer.mjs';
 import { previewMeshes } from './model.mjs';
 export class PreviewViewer extends ExteriorViewer {
+  constructor(host,model){
+    super(host,model);
+    let aspect=host.clientWidth/Math.max(1,host.clientHeight);
+    this.resizeFit=new ResizeObserver(()=>{
+      const next=host.clientWidth/Math.max(1,host.clientHeight);
+      if(next>0&&Math.abs(next/aspect-1)>.1){aspect=next;this.fit();}
+    });
+    this.resizeFit.observe(host);
+  }
   build(model){
     super.build(model);const ground=this.objects[0];this.objects=[ground,...previewMeshes(model)];this.pack();
     this.high=0;for(const o of this.objects)for(let i=1;i<o.positions.length;i+=3)this.high=Math.max(this.high,o.positions[i]);
-    this.baseTarget[1]=this.high*.42;
+    this.low=Math.min(...model.volumes.map(v=>v.minHeightM));
+    this.baseTarget[1]=this.low+(this.high-this.low)*.42;
+    for(let i=1;i<ground.positions.length;i+=3)ground.positions[i]=this.low-.08;
+    this.pack();
   }
   setupGraphics(){super.setupGraphics();this.note.textContent='ESTIMATED / NOT SURVEYED';}
   draw(){
     if(this.gl||!this.ctx){super.draw();return;}
-    // Depth-buffered software fallback: large wall triangles must not paint
-    // over the smaller windows merely because their average depths cross.
     const r=this.host.getBoundingClientRect(),w=Math.max(2,Math.round(r.width)),h=Math.max(2,Math.round(r.height));
     if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
     const image=this.ctx.createImageData(w,h),pixels=image.data,depth=new Float32Array(w*h);
@@ -31,5 +41,13 @@ export class PreviewViewer extends ExteriorViewer {
     }
     this.ctx.putImageData(image,0,0);
   }
-  reset(){super.reset();this.radius=Math.max(20,this.span*1.4+this.high*.65);this.invalidate();}
+  fit(){
+    const rect=this.host.getBoundingClientRect(),aspect=Math.max(.25,rect.width/Math.max(1,rect.height));
+    const halfAngle=Math.min(Math.PI/8,Math.atan(Math.tan(Math.PI/8)*aspect));
+    const b=this.model.extent,diameter=Math.hypot(b.maxX-b.minX,b.maxY-b.minY,this.high-(this.low||0));
+    this.radius=Math.max(20,diameter*.55/Math.sin(halfAngle));
+    this.target=[...this.baseTarget];this.invalidate();
+  }
+  reset(){super.reset();this.fit();}
+  dispose(){this.resizeFit?.disconnect();super.dispose();}
 }

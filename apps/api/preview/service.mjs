@@ -17,9 +17,10 @@ export function createPreviewService({workspace,research=createResearch(),deadli
     created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS quick_preview_requests(request_key TEXT PRIMARY KEY,request_hash TEXT NOT NULL,preview_id TEXT NOT NULL REFERENCES quick_previews(id));
     CREATE TABLE IF NOT EXISTS quick_preview_runs(id TEXT PRIMARY KEY,preview_id TEXT NOT NULL REFERENCES quick_previews(id),request_key TEXT UNIQUE NOT NULL,started_at TEXT NOT NULL,status TEXT NOT NULL,usage TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS quick_preview_undo(preview_id TEXT PRIMARY KEY REFERENCES quick_previews(id),spec TEXT NOT NULL,meta TEXT NOT NULL,after_version INTEGER NOT NULL);
     UPDATE quick_previews SET status='ready',stage='interrupted',message='Refinement stopped when the PC server closed. Your last usable estimate is saved. No AI request was automatically repeated.',version=version+1 WHERE status='refining';
     UPDATE quick_preview_runs SET status='interrupted' WHERE status='running';`);
-  function get(id){const row=db.prepare('SELECT * FROM quick_previews WHERE id=?').get(id);if(!row)throw new HttpError(404,'Estimated preview not found.');return {...row,spec:JSON.parse(row.spec),meta:JSON.parse(row.meta),notice:PREVIEW_NOTICE};}
+  function get(id){const row=db.prepare('SELECT * FROM quick_previews WHERE id=?').get(id);if(!row)throw new HttpError(404,'Estimated preview not found.');return {...row,spec:JSON.parse(row.spec),meta:JSON.parse(row.meta),notice:PREVIEW_NOTICE,canUndo:!!db.prepare('SELECT 1 FROM quick_preview_undo WHERE preview_id=? AND after_version=?').get(id,row.version)};}
   function update(id,epoch,change){const current=get(id);if(epoch!==undefined&&current.epoch!==epoch)return null;
     const spec=change.spec?validateSpec(change.spec):current.spec;if(change.spec)previewModel(spec);
     const meta={...current.meta,...change.meta};
@@ -37,7 +38,7 @@ export function createPreviewService({workspace,research=createResearch(),deadli
     if(count>=6){update(id,undefined,{status:'ready',stage:'budget',message:'Your local estimate is ready. The six-refinements-per-hour development budget has been reached.'});return;}
     if(db.prepare('SELECT id FROM quick_preview_runs WHERE request_key=?').get(key))return;
     const runId=randomUUID(),epoch=current.epoch+1,controller=new AbortController(),usage={responses:0,inputTokens:0,outputTokens:0,searchCalls:0};
-    db.prepare("UPDATE quick_previews SET epoch=?,status='refining' WHERE id=?").run(epoch,id);
+    db.prepare("UPDATE quick_previews SET epoch=?,status='refining',stage='research',version=version+1 WHERE id=?").run(epoch,id);
     db.prepare('INSERT INTO quick_preview_runs VALUES(?,?,?,?,?,?)').run(runId,id,key,now(),'running',JSON.stringify(usage));
     const timer=setTimeout(()=>controller.abort(new Error('deadline')),deadlineMs);timer.unref();
     const onProgress=async progress=>{
@@ -64,7 +65,11 @@ export function createPreviewService({workspace,research=createResearch(),deadli
   }
   return {
     get,
-    list(){return db.prepare('SELECT id,name,postcode,building_id,status,stage,updated_at FROM quick_previews ORDER BY updated_at DESC LIMIT 60').all();},
+    config(){return {researchConfigured:Boolean(research.configured()),limits:RESEARCH_LIMITS};},
+    list(){return db.prepare('SELECT id,name,postcode,building_id,status,stage,updated_at,spec,meta FROM quick_previews ORDER BY updated_at DESC LIMIT 60').all().map(({spec,meta,...row})=>{
+      const model=JSON.parse(spec),details=JSON.parse(meta);
+      return {...row,basis:details.basis,matchBasis:model.matchBasis,storeys:Math.max(...model.blocks.map(b=>b.floors)),blocks:model.blocks.length};
+    });},
     create(input){
       record(input);const name=text(input.name,'Building name',150),postcode=normalisePostcode(input.postcode),key=requestKey(input.requestKey);
       if(normalName(name).length<2)throw new HttpError(400,'Enter a building name and postcode.');
@@ -93,9 +98,28 @@ export function createPreviewService({workspace,research=createResearch(),deadli
     stop(id){const current=get(id);workers.get(id)?.controller.abort();db.prepare('UPDATE quick_previews SET epoch=epoch+1 WHERE id=?').run(id);return update(id,undefined,{status:'ready',stage:'stopped',message:'Research stopped. Your last usable model is saved.'});},
     edit(id,input){
       record(input);const current=get(id);if(input.version!==current.version)throw new HttpError(409,'Preview changed. Refresh before saving your adjustment.');
-      const spec=validateSpec(input.spec);previewModel(spec);workers.get(id)?.controller.abort();db.prepare('UPDATE quick_previews SET epoch=epoch+1 WHERE id=?').run(id);
+      let spec;try{spec=validateSpec(input.spec);previewModel(spec);}catch{throw new HttpError(422,'Check the estimated dimensions and roof settings. Nothing has been saved.');}
+      // A completed local edit is atomic and has one persistent undo point.
       spec.facts=[];spec.usedPhotoIds=[];spec.assumptions=[...spec.assumptions.slice(0,28),'Dimensions or appearance were adjusted by the user, not measured.'];
-      return update(id,undefined,{spec,status:'ready',stage:'adjusted',message:'Your estimated shape has been saved. It is not a measured model.',meta:{basis:'user-adjusted-estimate'}});
+      workers.get(id)?.controller.abort();
+      db.exec('BEGIN IMMEDIATE');
+      try{
+        db.prepare('UPDATE quick_previews SET epoch=epoch+1 WHERE id=?').run(id);
+        const saved=update(id,undefined,{spec,status:'ready',stage:'adjusted',message:'Your estimated shape has been saved. It is not a measured model.',meta:{basis:'user-adjusted-estimate',error:null}});
+        db.prepare('INSERT INTO quick_preview_undo VALUES(?,?,?,?) ON CONFLICT(preview_id) DO UPDATE SET spec=excluded.spec,meta=excluded.meta,after_version=excluded.after_version').run(id,JSON.stringify(current.spec),JSON.stringify(current.meta),saved.version);
+        db.exec('COMMIT');return get(id);
+      }catch(error){db.exec('ROLLBACK');throw error;}
+    },
+    undo(id,input){
+      record(input);const current=get(id),previous=db.prepare('SELECT * FROM quick_preview_undo WHERE preview_id=?').get(id);
+      if(input.version!==current.version||!previous||previous.after_version!==current.version)throw new HttpError(409,'This undo is no longer current. Reload the saved model first.');
+      db.exec('BEGIN IMMEDIATE');
+      try{
+        db.prepare('UPDATE quick_previews SET epoch=epoch+1 WHERE id=?').run(id);
+        db.prepare('DELETE FROM quick_preview_undo WHERE preview_id=?').run(id);
+        const saved=update(id,undefined,{spec:JSON.parse(previous.spec),meta:{...JSON.parse(previous.meta),error:null},status:'ready',stage:'restored',message:'Your previous estimate has been restored. No AI request was made.'});
+        db.exec('COMMIT');return saved;
+      }catch(error){db.exec('ROLLBACK');throw error;}
     },
     glb(id){const p=get(id);return previewGLB(p.spec,{sources:p.meta.references,photoCredits:p.meta.photos,title:p.name,postcode:p.postcode});},
     async close(){closed=true;for(const {controller} of workers.values())controller.abort();await Promise.allSettled([...workers.values()].map(w=>w.promise));
