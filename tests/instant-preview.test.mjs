@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createPreviewApp} from '../apps/api/preview-server.mjs';
@@ -45,7 +45,7 @@ test('extreme but valid estimates remain within the geometry budget',()=>{
   const s=defaultSpec();s.blocks[0].floors=25;s.blocks[0].width=100;s.blocks[0].depth=80;s.blocks[0].columns=12;s.blocks[0].balconies=true;
   const m=previewModel(s);assert.ok(m.volumes.length<=3000);assert.ok(previewMeshes(m).length>0);
 });
-test('start page and modules are served by the real app without a CDN',async()=>{const h=await harness();try{for(const p of ['/start','/instant.js','/instant.css','/modules/preview/model.mjs','/modules/preview/viewer.mjs'])assert.equal((await h.request(p)).status,200);const r=await h.request('/api/status');assert.equal(r.data.version,'0.6.0');assert.ok(r.data.features.length);}finally{await h.close();}});
+test('start page and modules are served by the real app without a CDN',async()=>{const h=await harness();try{for(const p of ['/start','/instant.js','/instant.css','/modules/preview/model.mjs','/modules/preview/viewer.mjs'])assert.equal((await h.request(p)).status,200);const r=await h.request('/api/status');assert.equal(r.data.version,JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version);assert.ok(r.data.features.length);}finally{await h.close();}});
 test('preview API keeps host/session/CSRF boundaries',async()=>{const h=await harness();try{assert.equal((await h.request('/api/previews','GET',undefined,false)).status,401);assert.equal((await fetch(h.base+'/api/previews',{method:'POST',body:JSON.stringify(input()),headers:{'Content-Type':'application/json'}})).status,401);assert.equal((await h.request('/api/previews','POST',{...input(),allowProcessing:false})).status,400);}finally{await h.close();}});
 test('first HTTP response contains a usable model even while research has not resolved',async()=>{
   let resolve;const job=new Promise(r=>resolve=r),h=await harness({configured:()=>true,run:async()=>job});
