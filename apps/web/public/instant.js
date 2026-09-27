@@ -1,11 +1,12 @@
 import { escapeHtml as e } from './api.js';
 import { defaultSpec, previewModel } from '/modules/preview/model.mjs';
+import { withConcept, conceptSVG, CONCEPT_NOTICE } from '/modules/preview/concept.mjs';
 import { PreviewViewer } from '/modules/preview/viewer.mjs';
 import { RELEASE, propertyInput, postcodeValue, modelBasis, stageSteps, statusCopy, retryRemaining, editBlock, matchesSaved, safeSource, supportSummary } from '/modules/preview/ux.mjs';
 
 const $ = id => document.getElementById(id);
 const uuid = () => globalThis.crypto?.randomUUID?.() || `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const S = { current:null, viewer:null, rendered:'', shape:'', csrf:'', authenticated:false, online:false, busy:false, screen:'welcome', token:0, timer:0, failures:0, config:{researchConfigured:false}, saved:[], edit:null, editVersion:0, editBase:'', editError:'', dirty:false, block:0, mode:'exterior', expanded:false, pending:null };
+const S = { current:null, viewer:null, rendered:'', shape:'', csrf:'', authenticated:false, online:false, busy:false, screen:'welcome', token:0, timer:0, failures:0, config:{researchConfigured:false}, saved:[], edit:null, editVersion:0, editBase:'', editError:'', dirty:false, block:0, mode:'exterior', expanded:false, pending:null, hasPlans:null, planBuilding:null };
 const notice = value => { $('notice').textContent = value || ''; $('notice').hidden = !value; };
 const sourceLink = (url,title) => { const safe=safeSource(url); return safe ? `<a href="${e(safe)}" target="_blank" rel="noopener noreferrer">${e(title)}</a>` : e(title); };
 const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); };
@@ -39,13 +40,14 @@ async function session() {
   return true;
 }
 function controls() {
+  $('view-concept').disabled=S.hasPlans!==false;
   const p=S.current,ready=S.online&&S.authenticated&&!S.busy,refining=p?.status==='refining',conflict=S.dirty&&S.editVersion!==p?.version;
   $('create').disabled=!ready;
   $('stop').hidden=!p?.id||!refining;$('stop').disabled=!ready||S.dirty;
   $('refine').hidden=!p?.id||refining;
-  const wait=retryRemaining(p);$('refine').disabled=!ready||S.dirty||!S.config.researchConfigured||wait>0;
-  $('refine').textContent=wait?`Research available in ${wait}s`:'Run another research pass';
-  $('research-availability').textContent=!S.config.researchConfigured?'Online research is not connected on this PC. Local corrections still work.':S.dirty?'Save or discard changes before more research.':'An additional pass can use API credit; it is never started by reloading.';
+  const wait=retryRemaining(p);$('refine').disabled=!ready||S.dirty;
+  $('refine').textContent='Check or add exterior photos';
+  $('research-availability').textContent=S.dirty?'Save or discard changes before adding photos.':'Check the building photo or upload your own. No paid work starts merely by opening that page.';
   $('adjust').disabled=!ready||!p?.id||!S.dirty||!!S.editError||conflict;
   $('discard').disabled=!S.dirty||S.busy;
   $('undo').hidden=!p?.canUndo;$('undo').disabled=!ready||S.dirty;
@@ -84,18 +86,20 @@ function renderModel(force=false,fit=false) {
   if($('floor').options.length!==n+1){$('floor').innerHTML='<option value="all">All floors</option>'+Array.from({length:n},(_,i)=>`<option value="${i}">${i===0?'Ground':'Level '+i} (est.)</option>`).join('');$('floor').value=old==='all'||Number(old)<n?old:'all';}
   const key=JSON.stringify([spec,$('floor').value,S.mode]);if(key===S.rendered&&!force)return;
   try{
-    const model=previewModel(spec,{floor:$('floor').value,cutaway:S.mode==='cutaway',explode:S.mode==='exploded'});
+    let model=previewModel(spec,{floor:$('floor').value,cutaway:S.mode==='cutaway'||S.mode==='concept',explode:S.mode==='exploded'});
+    $('concept-panel').hidden=S.mode!=='concept';if(S.mode==='concept'){ $('concept-svg').innerHTML=conceptSVG(model);model=withConcept(model); }
     const shape=JSON.stringify(spec),changed=shape!==S.shape;
     if(S.viewer)S.viewer.update(model);else S.viewer=new PreviewViewer($('viewer'),model);
     if(fit)S.viewer.reset();else if(changed)S.viewer.fit();
     S.shape=shape;S.rendered=key;
     $('stats').innerHTML=`<div><strong>~${n}</strong>Estimated storeys</div><div><strong>${spec.blocks.length}</strong>Building sections</div><div><strong>Unknown</strong>Internal layout</div>`;
-    $('view-help').textContent=S.mode==='cutaway'?'Empty floor envelopes only. Rooms and escape routes are unknown.':'Drag to rotate. Pinch or scroll to zoom. Arrow keys also rotate.';
+    $('view-help').textContent=S.mode==='concept'?CONCEPT_NOTICE:S.mode==='cutaway'?'Empty floor envelopes only. Rooms and escape routes are unknown.':'Drag to rotate. Pinch or scroll to zoom. Arrow keys also rotate.';
   }catch{notice('This view could not render. Try Fit or a different floor. The saved model is unchanged.');}
 }
 function show(p,{activate=false,fit=false}={}) {
   if(S.current?.id&&S.current.id!==p.id){clearEdits();S.block=0;S.viewer?.dispose();S.viewer=null;S.rendered='';S.mode='exterior';setModeButtons();}
   S.current=p;
+  if(S.planBuilding!==p.building_id){S.planBuilding=p.building_id;S.hasPlans=null;refreshPlans();}
   if(activate){S.screen='model';$('welcome').hidden=true;$('result').hidden=false;document.body.classList.add('has-model');$('return-current').hidden=false;}
   // Metadata-only progress may advance the version. Never rebase over changed geometry.
   if(S.dirty&&JSON.stringify(p.spec)===S.editBase)S.editVersion=p.version;
@@ -121,7 +125,15 @@ function show(p,{activate=false,fit=false}={}) {
   if(p.id){$('export').href=`/api/previews/${encodeURIComponent(p.id)}/model.glb`;$('plans').href='/build?building='+encodeURIComponent(p.building_id);$('survey').href='/#/survey?building='+encodeURIComponent(p.building_id)+'&tier=silver';$('workspace').href='/#/building/'+encodeURIComponent(p.building_id);}
   if(!S.dirty)editFields();renderModel(false,fit);controls();
 }
-function setModeButtons() { for(const mode of ['exterior','cutaway','exploded']){$('view-'+mode).classList.toggle('selected',S.mode===mode);$('view-'+mode).setAttribute('aria-pressed',String(S.mode===mode));} }
+async function refreshPlans() {
+  if(!S.current?.building_id)return;
+  const bid=S.current.building_id;
+  try{const info=await request('/api/photo-flow/buildings/'+encodeURIComponent(bid));if(S.current?.building_id!==bid)return;S.hasPlans=info.hasPlans;
+    if(S.hasPlans&&S.mode==='concept'){S.mode='exterior';setModeButtons();renderModel(true);}
+    $('concept-plan-note').textContent=S.hasPlans?'Real plans uploaded - example layouts are hidden pending plan processing.':'No real plans provided. Example layouts are invented visual concepts, not discovered rooms.';controls();
+  }catch{S.hasPlans=null;controls();}
+}
+function setModeButtons() { for(const mode of ['exterior','cutaway','exploded','concept']){$('view-'+mode).classList.toggle('selected',S.mode===mode);$('view-'+mode).setAttribute('aria-pressed',String(S.mode===mode));} }
 function renderSaved() {
   const items=matchesSaved(S.saved,$('history-search').value);
   $('history-section').hidden=!S.saved.length;
@@ -138,7 +150,7 @@ async function poll(token) {
     if(S.current?.id){const p=await request('/api/previews/'+encodeURIComponent(S.current.id));if(token!==S.token)return;show(p);}
     S.failures=0;connection(true);
     if(S.current?.status==='refining'||retryRemaining(S.current)>0)schedule();
-    else {await history();schedule(15000);}
+    else {await history();await refreshPlans();schedule(15000);}
   }catch(error){if(token!==S.token)return;if(error.status===404){notice('This saved preview was not found. Your other saved buildings are unchanged.');return;}S.failures++;schedule(Math.min(30000,3000*2**Math.min(S.failures,4)));}
 }
 async function act(fn) {
@@ -171,17 +183,18 @@ $('create-form').onsubmit=event=>{event.preventDefault();const input=propertyInp
     if(!await mayLeave())return;
     const saved=S.saved.find(p=>p.name.trim().toLowerCase()===input.name.toLowerCase()&&p.postcode===input.postcode);if(saved){await openPreview(saved.id,true);return;}
     const key=S.pending?.name===input.name&&S.pending.postcode===input.postcode?S.pending.requestKey:uuid();rememberPending({...input,errors:undefined,requestKey:key});
-    S.viewer?.dispose();S.viewer=null;S.current=null;S.rendered='';S.block=0;clearEdits();
-    show({...input,spec:defaultSpec(input.name),meta:{basis:'generic-starting-estimate'},status:'ready',stage:'initial'},{activate:true});$('result').scrollIntoView({block:'start'});
-    await new Promise(resolve=>requestAnimationFrame(resolve));
-    const p=await request('/api/previews',{method:'POST',body:{name:input.name,postcode:input.postcode,requestKey:key,allowProcessing:true}});
-    rememberPending(null);window.history.pushState(null,'','/start?preview='+encodeURIComponent(p.id));show(p,{activate:true});$('title').focus({preventScroll:true});await history();
+    $('create-wait').hidden=false;
+    try {
+      const job=await request('/api/photo-flow/jobs',{method:'POST',body:{name:input.name,postcode:input.postcode,requestKey:key,allowProcessing:true}});
+      rememberPending(null);location.assign('/build?job='+encodeURIComponent(job.id));
+    } finally {$('create-wait').hidden=true;}
+
   });
 };
 $('postcode').onblur=()=>{const v=postcodeValue($('postcode').value);if(v)$('postcode').value=v;};
 for(const id of ['name','postcode'])$(id).oninput=()=>{$(id+'-error').textContent='';$(id).removeAttribute('aria-invalid');};
 $('nav-new').onclick=()=>act(async()=>{if(await mayLeave()){returnWelcome();$('name').value='';$('postcode').value='';}});
-$('wrong-building').onclick=()=>act(async()=>{if(await mayLeave()){returnWelcome();notice('Try a more specific building name, including its street. The current estimate stays in Saved buildings.');$('name').select();}});
+$('wrong-building').onclick=()=>act(async()=>{if(await mayLeave())location.assign('/build?building='+encodeURIComponent(S.current.building_id));});
 $('nav-saved').onclick=()=>act(async()=>{await history();if(!S.saved.length){notice('Create your first estimate to see it here.');return;} $('history-section').scrollIntoView({block:'start'});$('history-search').focus({preventScroll:true});});
 $('return-model').onclick=()=>{if(S.current)show(S.current,{activate:true});};
 $('history-search').oninput=renderSaved;
@@ -218,11 +231,8 @@ $('adjust-form').onsubmit=event=>{event.preventDefault();act(async()=>{
 $('discard').onclick=()=>{clearEdits();show(S.current);};
 $('undo').onclick=()=>act(async()=>{const p=await request('/api/previews/'+S.current.id+'/undo',{method:'POST',body:{version:S.current.version}});clearEdits();show(p);await history();});
 $('stop').onclick=()=>act(async()=>{show(await request('/api/previews/'+S.current.id+'/stop',{method:'POST',body:{}}));});
-$('refine').onclick=()=>act(async()=>{
-  if(!await confirmAction('Start another research pass?','This uses the operator\'s API credit: up to 3 AI calls, 8 search calls and 24,000 maximum output tokens. It is not a fixed money limit. The saved estimate remains available.','Start research'))return;
-  const p=await request('/api/previews/'+S.current.id+'/refine',{method:'POST',body:{version:S.current.version,requestKey:uuid(),allowProcessing:true}});show(p);
-});
-for(const mode of ['exterior','cutaway','exploded'])$('view-'+mode).onclick=()=>{S.mode=mode;setModeButtons();renderModel();S.viewer?.fit();};
+$('refine').onclick=()=>act(async()=>{if(await mayLeave())location.assign('/build?building='+encodeURIComponent(S.current.building_id));});
+for(const mode of ['exterior','cutaway','exploded','concept'])$('view-'+mode).onclick=()=>{if(mode==='concept'&&S.hasPlans!==false){notice('Example layouts are only shown before real plans have been provided.');return;}S.mode=mode;if(mode==='concept'&&$('floor').value==='all')$('floor').value='0';setModeButtons();renderModel();S.viewer?.fit();};
 $('floor').onchange=()=>{renderModel();S.viewer?.fit();};$('reset').onclick=()=>S.viewer?.reset();$('top').onclick=()=>S.viewer?.top();
 $('zoom-in').onclick=()=>S.viewer?.zoom(.82);$('zoom-out').onclick=()=>S.viewer?.zoom(1.22);
 const outsideModel=()=>[document.querySelector('.top'),$('connection-banner'),$('welcome'),document.querySelector('.result-heading'),document.querySelector('.research-strip'),document.querySelector('.side-card'),document.querySelector('.model-boundary'),$('history-section'),document.querySelector('footer')];
@@ -244,7 +254,7 @@ async function copyText(text,target) {
   catch{const box=document.createElement('textarea');box.value=text;box.readOnly=true;box.setAttribute('aria-label','Text to copy');target.append(box);box.focus();box.select();return false;}
 }
 $('copy-diagnostic').onclick=async()=>{const done=await copyText(supportSummary(S.current,S.online),$('panel-evidence'));notice(done?'Safe diagnostic summary copied. No API key or address was included.':'Copy the selected diagnostic text. No API key or address is included.');};
-$('download-toggle').onclick=()=>{$('export-message').textContent=S.dirty?'The 3D download uses the saved version. Save your adjustments first. A picture captures your current view.':'GLB contains actual estimated geometry. The PNG includes an estimated-model label.';$('export-dialog').showModal();};
+$('download-toggle').onclick=()=>{$('export-message').textContent=S.dirty?'The 3D download uses the saved version. Save your adjustments first. A picture captures your current view.':'GLB exports the saved exterior only, not invented rooms. PNG labels any invented layout.';$('export-dialog').showModal();};
 $('export').onclick=event=>{if(S.dirty||!S.online||!S.authenticated){event.preventDefault();$('export-message').textContent=S.dirty?'Save or discard your changes before downloading the 3D model.':'Reconnect to the PC before downloading.';}};
 $('copy-link').onclick=async()=>{
   const text=location.origin+'/start?preview='+encodeURIComponent(S.current.id);
@@ -254,7 +264,7 @@ $('snapshot').onclick=async()=>{
   if(!S.viewer)return;
   try{
     S.viewer.draw();const source=S.viewer.canvas,out=document.createElement('canvas'),scale=Math.min(1,1500/source.width);out.width=Math.round(source.width*scale);out.height=Math.round(source.height*scale)+94;
-    const ctx=out.getContext('2d');ctx.drawImage(source,0,0,out.width,out.height-94);ctx.fillStyle='#ffffff';ctx.fillRect(0,out.height-94,out.width,94);ctx.fillStyle='#143637';ctx.font='bold 17px sans-serif';ctx.fillText(S.current.name.slice(0,65)+' / '+S.current.postcode,18,out.height-65,out.width-36);ctx.font='12px sans-serif';ctx.fillText('PropertyChecked: illustrative estimate, not surveyed. '+(S.dirty?'Unsaved adjustments.':'Saved model view.'),18,out.height-41,out.width-36);ctx.fillText('Building match and dimensions may be wrong. Not for safety or construction.',18,out.height-20,out.width-36);
+    const ctx=out.getContext('2d');ctx.drawImage(source,0,0,out.width,out.height-94);ctx.fillStyle='#ffffff';ctx.fillRect(0,out.height-94,out.width,94);ctx.fillStyle='#143637';ctx.font='bold 17px sans-serif';ctx.fillText(S.current.name.slice(0,65)+' / '+S.current.postcode,18,out.height-65,out.width-36);ctx.font='12px sans-serif';ctx.fillText('PropertyChecked: illustrative estimate, not surveyed. '+(S.dirty?'Unsaved adjustments.':'Saved model view.'),18,out.height-41,out.width-36);ctx.fillText(S.mode==='concept'?CONCEPT_NOTICE:'Building match and dimensions may be wrong. Not for safety or construction.',18,out.height-20,out.width-36);
     const blob=await new Promise(resolve=>out.toBlob(resolve,'image/png'));if(!blob)throw new Error('No image');const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='propertychecked-estimated-view.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);$('export-message').textContent='Current view saved with its estimated-model label.';
   }catch{$('export-message').textContent='The current browser could not export a picture. The 3D download remains available.';}
 };

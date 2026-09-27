@@ -50,9 +50,11 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
     return {p,k,signature};
   }
   const remember=(id,c)=>db.prepare('INSERT INTO photo_flow_requests VALUES(?,?,?)').run(c.k,c.signature,id);
-  function canRun() {
+  function canRun(id) {
     db.prepare('DELETE FROM photo_flow_assets WHERE expires_at IS NOT NULL AND expires_at<?').run(Date.now());
     if(closed||workers.size)throw new HttpError(409,'Another photo search or build is running. Wait for it to finish or pause it first.');
+    const current=row(id),wait=current.data.error?.retryAfterSeconds||0;
+    if(wait&&(Date.now()-Date.parse(current.updated_at))/1000<wait)throw new HttpError(429,'Wait for the provider retry interval before starting another search or build.');
     const since=new Date(Date.now()-3600000).toISOString();
     if(db.prepare('SELECT count(*) AS n FROM photo_flow_runs WHERE started_at>?').get(since).n>=12)throw new HttpError(429,'The local photo-search/build allowance is reached. Your saved files are still available.');
   }
@@ -65,7 +67,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
     const live=()=>{controller.signal.throwIfAborted();if(closed||row(id).epoch!==epoch)throw new Error('Superseded');};
     const promise=new Promise(r=>setImmediate(r)).then(()=>{live();return task({signal:controller.signal,live,update:f=>{live();return change(id,f,epoch);}});}).catch(e=>{
       if(closed||row(id).epoch!==epoch)return;
-      const safe=e instanceof ResearchError?{code:e.code,message:e.message}:e instanceof HttpError?{code:'ACTION_'+e.status,message:e.message}:{code:controller.signal.aborted?'PAUSED':'BUILD_FAILED',message:controller.signal.aborted?'Processing paused. Nothing is automatically retried.':'Processing could not finish. Your uploads and existing model are preserved.'};
+      const safe=e instanceof ResearchError?{code:e.code,message:e.message,retryAfterSeconds:e.retryAfterSeconds||0}:e instanceof HttpError?{code:'ACTION_'+e.status,message:e.message}:{code:controller.signal.aborted?'PAUSED':'BUILD_FAILED',message:controller.signal.aborted?'Processing paused. Nothing is automatically retried.':'Processing could not finish. Your uploads and existing model are preserved.'};
       change(id,{state:'paused',stage:'interrupted',message:safe.message,data:{error:safe}},epoch);
     }).finally(()=>{clearTimeout(timer);workers.delete(id);});workers.set(id,{controller,promise});
   }
@@ -78,7 +80,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
   }
   function search(id,c) {
     if(!research.configured()){remember(id,c);change(id,{state:'needs_photo',stage:'upload',message:'Online photo search is not configured. Add a building photo; local map estimates still work.'});return get(id);}
-    canRun();remember(id,c);
+    canRun(id);remember(id,c);
     work(id,'searching',async({signal,live,update})=>{
       const p=row(id),b=workspace.building(p.building_id),usage=freshUsage();
       update({data:{usage,candidateIds:[],selectedIds:[],notes:'',references:[]}});
@@ -110,7 +112,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
       const id=randomUUID();db.prepare('INSERT INTO photo_flow_jobs(id,building_id,state,stage,message,data,updated_at) VALUES(?,?,?,?,?,?,?)').run(id,b.id,'needs_photo','upload','Add your building photos or find a photo online.',JSON.stringify({usage:freshUsage()}),now());
       const c={k,signature};
       if(input.search===false){remember(id,c);return get(id);}
-      try{return search(id,c);}catch(e){remember(id,c);change(id,{message:e instanceof HttpError?e.message:'Photo search has not started.'});return get(id);}
+      try{return search(id,c);}catch(e){if(!db.prepare('SELECT 1 FROM photo_flow_requests WHERE request_key=?').get(k))remember(id,c);change(id,{message:e instanceof HttpError?e.message:'Photo search has not started.'});return get(id);}
     },
     search(id,input) {const c=checked(id,input,'search');if(c.duplicate)return get(id);if(input.allowProcessing!==true)throw new HttpError(400,'Approve this new online search.');return search(id,c);},
     reject(id,input) {
@@ -126,7 +128,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
       const selected=input.assetIds.map(aid=>available.find(a=>a.id===aid&&a.kind==='photo'&&(a.origin==='upload'||p.data.candidateIds?.includes(a.id))));
       if(selected.some(a=>!a))throw new HttpError(400,'A selected photo is missing, expired or belongs to another building.');
       if(!selected.length&&input.withoutPhoto!==true)throw new HttpError(400,'Confirm a photo or explicitly continue without one.');
-      canRun();
+      canRun(id);
       const prior=preview.create({name:b.name,postcode:b.postcode,requestKey:randomUUID(),allowProcessing:true},{deferResearch:true});
       if(prior.building_id!==b.id)throw new HttpError(409,'A duplicate local building record needs resolving before this model can be replaced.');
       if(prior.status==='refining')throw new HttpError(409,'Pause the existing model research before using new photographs.');
@@ -143,7 +145,7 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
         catch {live();mapData={state:'unavailable',note:'Using the previous outline or an estimated shape.'};}
         const mapped=spec.mapped;
         if(mapped)sourceRefs=[{id:'map-ms',url:MAP_SOURCE_URL,title:'Microsoft building footprint / unconfirmed match'},{id:'map-ms-license',url:MAP_LICENCE_URL,title:'CDLA Permissive 2.0'}];
-        let result={spec,basis:mapped?'map-based-estimate':'generic-starting-estimate',references:[],photos:[],message:'Estimate ready. Photo analysis is not configured; appearance has not been derived from the uploaded image.'},partial=null;
+        let result={spec,basis:prior.meta.basis||'generic-starting-estimate',references:prior.meta.references||[],photos:prior.meta.photos||[],message:'Estimate ready. Photo analysis is not configured; newly selected photos were not interpreted.'},partial=null,newVisualResult=false;
         const prepared={images,photoMeta:images.map(({bytes,...x})=>x),references,notes,visualResearch:{found:images.length,loaded:images.length,analysed:0,used:0,status:'confirmed-inputs'}};
         if(research.configured()) {
           update({stage:'appearance',message:`Using ${images.length} selected photo${images.length===1?'':'s'} to estimate the exterior.`,data:{usage}});
@@ -151,14 +153,15 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
             const base={...spec};delete base.mapped;
             result=await research.run({name:b.name,postcode:b.postcode,spec:base,prepared,usage,signal,onProgress:async progress=>{
               live();if(progress.spec)partial={...progress};update({stage:progress.stage==='checking'?'checking':'appearance',message:progress.message,data:{usage}});
-            }});
-          }catch(e){live();result=partial?.spec?{...partial,message:'The first visual estimate is saved; the final check did not finish.'}:{...result,message:'Photo interpretation did not finish. The available outline is retained, not presented as a photo-matched reconstruction.'};
-            update({data:{error:e instanceof ResearchError?{code:e.code,message:e.message}:{code:'APPEARANCE_UNAVAILABLE',message:'Photo interpretation did not finish.'}}});}
+            }});newVisualResult=true;
+          }catch(e){live();newVisualResult=Boolean(partial?.spec);result=partial?.spec?{...partial,message:'The first visual estimate is saved; the final check did not finish.'}:{...result,message:'Photo interpretation did not finish. The available outline is retained, not presented as a photo-matched reconstruction.'};
+            update({data:{error:e instanceof ResearchError?{code:e.code,message:e.message,retryAfterSeconds:e.retryAfterSeconds||0}:{code:'APPEARANCE_UNAVAILABLE',message:'Photo interpretation did not finish.'}}});}
         }
         live();if(mapped)result.spec=applyMapped(result.spec,mapped);
-        if(result.spec.usedPhotoIds?.length)result.spec.summary='Photo-informed appearance; map identity remains unverified. '+result.spec.summary.slice(0,570);
+        if(!newVisualResult)result.spec.summary='The last appearance is retained; newly selected photos have not been interpreted. '+result.spec.summary.slice(0,520);
+        else if(result.spec.usedPhotoIds?.length)result.spec.summary='Photo-informed appearance; map identity remains unverified. '+result.spec.summary.slice(0,570);
         update({stage:'saving',message:'Saving the model and its source information.'});
-        const saved=preview.publishPrepared(prior.id,prior.version,{spec:result.spec,message:result.message,meta:{basis:mapped?'map-based-estimate':result.basis,photos:result.photos||[],references:[...sourceRefs,...(result.references||[])],usage,mapData,photoFlow:{jobId:id,userConfirmedPhotoIds:input.assetIds,identity:'user-selected-photo; footprint unverified'}}});
+        const saved=preview.publishPrepared(prior.id,prior.version,{spec:result.spec,message:result.message,meta:{basis:mapped?'map-based-estimate':result.basis,photos:result.photos||[],references:[...sourceRefs,...(result.references||[]).filter(r=>!sourceRefs.some(s=>s.id===r.id))],usage,mapData,error:row(id).data.error||null,photoFlow:{jobId:id,userConfirmedPhotoIds:input.assetIds,identity:'user-selected-photo; footprint unverified'}}});
         update({state:'ready',stage:'ready',message:result.message,data:{previewId:saved.id,usage}});
       });return get(id);
     },
@@ -172,8 +175,9 @@ export function createPhotoFlow({workspace,preview,uploadDir,research=createRese
       if(old){if(old.signature!==signature)throw new HttpError(409,'Upload reference belongs to different contents.');return get(id);}
       let mime;
       if(kind==='plan'&&bytes.subarray(0,5).toString()==='%PDF-'&&bytes.length<=25*1024*1024)mime='application/pdf';
-      else mime=photoType(bytes)?.mime;
-      if(!mime)throw new HttpError(415,'Use JPEG, PNG or WebP photos (up to 2 MB after resizing), or PDF plans up to 25 MB. HEIC must be converted to JPEG first.');
+      else mime=photoType(kind==='plan'?bytes.subarray(0,2*1024*1024):bytes)?.mime;
+      if(bytes.length>25*1024*1024)throw new HttpError(413,'The file exceeds 25 MB.');
+      if(!mime)throw new HttpError(415,'Use JPEG, PNG or WebP photos (up to 2 MB after resizing), or PDF/image plans up to 25 MB. HEIC must be converted to JPEG first.');
       const all=assets(p.building_id).filter(a=>a.origin==='upload');
       if(all.length>=40)throw new HttpError(413,'This building already has 40 uploaded files. Use the document workspace for larger packs.');
       const sha=digest(bytes),duplicate=all.find(a=>JSON.parse(a.metadata).sha256===sha&&a.kind===kind);

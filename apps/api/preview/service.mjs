@@ -71,7 +71,7 @@ export function createPreviewService({workspace,research=createMappedResearch({w
       const model=JSON.parse(spec),details=JSON.parse(meta);
       return {...row,basis:details.basis,matchBasis:model.matchBasis,storeys:Math.max(...model.blocks.map(b=>b.floors)),blocks:model.blocks.length};
     });},
-    create(input){
+    create(input, internal={}){
       record(input);const name=text(input.name,'Building name',150),postcode=normalisePostcode(input.postcode),key=requestKey(input.requestKey);
       if(normalName(name).length<2)throw new HttpError(400,'Enter a building name and postcode.');
       if(input.allowProcessing!==true)throw new HttpError(400,'Starting a preview requires processing consent.');
@@ -85,7 +85,7 @@ export function createPreviewService({workspace,research=createMappedResearch({w
       previewModel(spec);const id=randomUUID(),time=now();
       db.prepare('INSERT INTO quick_previews(id,property_key,building_id,name,postcode,spec,meta,status,stage,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(id,propertyKey,building.id,name,postcode,JSON.stringify(spec),JSON.stringify(meta),'ready','initial','Initial concept ready. Building research will refine it where possible.',time,time);
       db.prepare('INSERT INTO quick_preview_requests VALUES(?,?,?)').run(key,signature,id);
-      startRefinement(id,key);return get(id);
+      if(!internal.deferResearch)startRefinement(id,key);return get(id);
     },
     refine(id,input){
       record(input);const current=get(id),key=requestKey(input.requestKey);
@@ -125,6 +125,13 @@ export function createPreviewService({workspace,research=createMappedResearch({w
         const saved=update(id,undefined,{spec:JSON.parse(previous.spec),meta:{...JSON.parse(previous.meta),error:null},status:'ready',stage:'restored',message:'Your previous estimate has been restored. No AI request was made.'});
         db.exec('COMMIT');return saved;
       }catch(error){db.exec('ROLLBACK');throw error;}
+    },
+    publishPrepared(id, version, result) {
+      const current=get(id);
+      if(current.version!==version || workers.has(id))throw new HttpError(409,'The saved model changed while this build was running. Your existing model has not been replaced.');
+      const spec=validateSpec(result.spec);previewModel(spec);
+      db.prepare('UPDATE quick_previews SET epoch=epoch+1 WHERE id=?').run(id);
+      return update(id,undefined,{spec,status:'ready',stage:result.meta?.error?'fallback':'complete',message:result.message||'Photo-first estimate ready.',meta:{...result.meta}});
     },
     glb(id){const p=get(id);return previewGLB(p.spec,{sources:p.meta.references,photoCredits:p.meta.photos,title:p.name,postcode:p.postcode});},
     async close(){closed=true;for(const {controller} of workers.values())controller.abort();await Promise.allSettled([...workers.values()].map(w=>w.promise));
