@@ -1,0 +1,22 @@
+name: Temporary photo research QA snapshot
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.head_ref == 'fix/exterior-photo-research'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Package tracked code only for offline QA
+        run: git archive --format=zip --output=propertychecked-source-qa.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: propertychecked-source-qa
+          path: propertychecked-source-qa.zip
+          retention-days: 1
