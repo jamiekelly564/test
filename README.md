@@ -1,4 +1,4 @@
-# PropertyChecked 0.7.0
+# PropertyChecked 0.8.1
 
 Local building-management workspace with instant estimated 3D previews and a separate evidence-based reconstruction workflow. Models are interactive geometry, not generated pictures. They are not surveys or automated fire-safety assessments.
 
@@ -23,6 +23,10 @@ Enter the building name and postcode. A generic estimated exterior appears immed
 v0.7 adds a model-focused responsive interface, searchable saved estimates, clear source/status labels, section-by-section live corrections, persistent one-step manual undo, connection recovery and expanded camera controls. Export saved GLB geometry or a labelled PNG of the current view. See [UX improvements and validation](docs/UX-IMPROVEMENTS.md).
 
 No manual adjustment or page refresh starts a paid AI request. Additional refinement is explicitly confirmed. The existing research allowance remains bounded, with no automatic paid retry. The app does not include a high-resolution satellite subscription or scrape Google Maps imagery. Details: [Instant previews](docs/INSTANT-PREVIEWS.md).
+
+## Photo-informed exterior research
+
+v0.8.1 adds actual web image results and passes retrieved photographs to both appearance checks, with visible photo-use counts and original source links. The independently mapped outline remains intact. This is not Google Images scraping, photographic textures or a guarantee of building identity. Existing saved previews need an explicit new research pass. See [Photo research and validation](docs/PHOTO-RESEARCH.md).
 
 ## Evidence, operations and the original model
 

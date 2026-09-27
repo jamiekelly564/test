@@ -109,7 +109,14 @@ function show(p,{activate=false,fit=false}={}) {
   $('facts').innerHTML=(p.spec.facts||[]).map(f=>{const s=refs.find(s=>s.id===f.sourceId);return `<p>${e(f.detail)} ${s?sourceLink(s.url,'Source'):''}</p>`;}).join('')||'<p class="muted">No sourced observations recorded yet. The current shape may be a generic estimate.</p>';
   $('assumptions').innerHTML=(p.spec.assumptions||[]).map(v=>`<li>${e(v)}</li>`).join('');
   $('sources').innerHTML=(p.meta?.references||[]).map(s=>`<div class="source-item">${sourceLink(s.url,s.title)}</div>`).join('')+(p.meta?.photos||[]).map(s=>`<div class="source-item">${sourceLink(s.url,s.title)}<small>${e(s.artist)} / ${sourceLink(s.licenceUrl,s.licence)} / ${p.spec.usedPhotoIds.includes(s.id)?'Used as an appearance reference':'Candidate only; not used in this estimate'}.</small></div>`).join('')||'<p>No public sources were recorded.</p>';
-  const u=p.meta?.usage||{};$('usage').textContent=`Latest refinement: ${u.responses||0} AI calls, ${u.searchCalls||0} searches, ${u.inputTokens||0} input and ${u.outputTokens||0} output tokens reported. Up to 3 AI calls and 24,000 maximum output tokens per pass; this is not a fixed money limit.`;
+  const u=p.meta?.usage||{};
+  const visual=u.photoSearch;
+  const photoLine=$('photo-evidence-status');
+  if(photoLine){
+    const used=(p.spec.usedPhotoIds||[]).filter(id=>(p.meta?.photos||[]).some(photo=>photo.id===id)).length;
+    photoLine.textContent=visual ? `Latest photo search: ${visual.found||0} web candidates; ${visual.loaded||0} photos retrieved; ${visual.analysed||0} supplied to a completed appearance pass. Current model uses ${used} photo references.` : used ? `Current model uses ${used} saved photo references. A new research pass enables wider image search.` : 'No photo-based appearance is recorded yet. The outline and facade are separate: a mapped outline does not establish its appearance.';
+  }
+  $('usage').textContent=`Latest refinement: ${u.responses||0} AI calls, ${u.searchCalls||0} searches, ${u.inputTokens||0} input and ${u.outputTokens||0} output tokens reported. Up to 3 AI calls and 24,000 maximum output tokens per pass; this is not a fixed money limit.`;
   $('diagnostic').textContent=p.meta?.error?`${p.meta.error.code}: ${p.meta.error.message}`:'No processing error recorded.';
   if(p.id){$('export').href=`/api/previews/${encodeURIComponent(p.id)}/model.glb`;$('plans').href='/build?building='+encodeURIComponent(p.building_id);$('survey').href='/#/survey?building='+encodeURIComponent(p.building_id)+'&tier=silver';$('workspace').href='/#/building/'+encodeURIComponent(p.building_id);}
   if(!S.dirty)editFields();renderModel(false,fit);controls();

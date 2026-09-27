@@ -8,7 +8,7 @@ import { featureStatus } from '../../packages/domain/catalog.mjs';
 import { HttpError, record } from './validation.mjs';
 import { createPreviewService } from './preview/service.mjs';
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export const VERSION='0.8.0';
+export const VERSION='0.8.1';
 const CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
 const files={'/':'apps/web/public/index.html','/index.html':'apps/web/public/index.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
   '/modules/auto-model/geometry.mjs':'packages/auto-model/geometry.mjs','/modules/auto-model/viewer.mjs':'packages/auto-model/viewer.mjs'};
