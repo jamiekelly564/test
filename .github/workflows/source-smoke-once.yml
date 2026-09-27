@@ -16,19 +16,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Inspect public index link format only, no file download or API credit
-        shell: bash
-        run: |
-          node --input-type=module <<'JS'
-          const url='https://bfppub.blob.core.windows.net/%24web/2026-07-24/dataset-links.csv';
-          const r=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(15000),headers:{'User-Agent':'PropertyChecked/0.8 (explicit index-format diagnostic)'}});
-          console.log('Index HTTP',r.status);
-          if(!r.ok)process.exit(1);
-          const text=await r.text();if(text.length>16*1024*1024)throw Error('Index too large');
-          const lines=text.split(/\r?\n/);console.log('Header',lines[0]);
-          for(const line of lines.filter(l=>l.includes('31313131')).slice(0,8)){
-            const raw=line.split(',');console.log('Row fields',raw.map(v=>{
-              try{const u=new URL(v.replace(/^"|"$/g,''));return {host:u.hostname,path:u.pathname,queryKeys:[...u.searchParams.keys()]};}catch{return v.slice(0,100);}
-            }));
-          }
-          JS
+      - name: Current public sources, one postcode, no API credit
+        run: node scripts/check-map.mjs "Queensgate" "RH1 1RT"
