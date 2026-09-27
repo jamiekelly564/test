@@ -2,13 +2,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import { HttpError, normalisePostcode, text, record } from '../validation.mjs';
 import { defaultSpec, validateSpec, previewModel, previewGLB, PREVIEW_NOTICE } from '../../../packages/preview/model.mjs';
 import { createResearch, ResearchError, RESEARCH_LIMITS } from './research.mjs';
+import { createMappedResearch } from '../map-data/research.mjs';
 const now=()=>new Date().toISOString();
 const normalName=s=>s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const requestKey=v=>{if(typeof v!=='string'||!/^[a-zA-Z0-9-]{12,80}$/.test(v))throw new HttpError(400,'Invalid request reference.');return v;};
 
 /** A speculative preview is never promoted to an evidence draft or inspected asset. */
-export function createPreviewService({workspace,research=createResearch(),deadlineMs=RESEARCH_LIMITS.deadlineSeconds*1000}){
+export function createPreviewService({workspace,research=createMappedResearch({workspace,base:createResearch()}),deadlineMs=RESEARCH_LIMITS.deadlineSeconds*1000}){
   const db=workspace.db,workers=new Map();let closed=false;
   db.exec(`CREATE TABLE IF NOT EXISTS quick_previews (
     id TEXT PRIMARY KEY, property_key TEXT UNIQUE NOT NULL, building_id TEXT NOT NULL REFERENCES buildings(id),
@@ -43,7 +44,7 @@ export function createPreviewService({workspace,research=createResearch(),deadli
     const timer=setTimeout(()=>controller.abort(new Error('deadline')),deadlineMs);timer.unref();
     const onProgress=async progress=>{
       if(controller.signal.aborted||closed)return;
-      const meta={};for(const field of ['basis','references','photos','usage'])if(progress[field]!==undefined)meta[field]=progress[field];
+      const meta={};for(const field of ['basis','references','photos','usage','mapData'])if(progress[field]!==undefined)meta[field]=progress[field];
       update(id,epoch,{...progress,meta,status:'refining'});
       db.prepare('UPDATE quick_preview_runs SET usage=? WHERE id=?').run(JSON.stringify(usage),runId);
     };
@@ -52,7 +53,7 @@ export function createPreviewService({workspace,research=createResearch(),deadli
       if(controller.signal.aborted||closed)return;
       const result=await research.run({name:current.name,postcode:current.postcode,spec:current.spec,signal:controller.signal,usage,onProgress});
       if(controller.signal.aborted||closed)return;
-      update(id,epoch,{spec:result.spec,status:'ready',stage:'complete',message:result.message,meta:{basis:result.basis,references:result.references,photos:result.photos,usage,error:null}});
+      update(id,epoch,{spec:result.spec,status:'ready',stage:'complete',message:result.message,meta:{basis:result.basis,references:result.references,photos:result.photos,usage,error:null,...(result.mapData?{mapData:result.mapData}:{})}});
     }).catch(error=>{
       if(closed)return;
       const safe=error instanceof ResearchError?{code:error.code,message:error.message,retryAfterSeconds:error.retryAfterSeconds||0}:{code:controller.signal.aborted?'STOPPED':'REFINEMENT_FAILED',message:controller.signal.aborted?'Refinement stopped. Your last usable model is preserved.':'Refinement could not finish. Your last usable estimate is preserved.'};
@@ -65,7 +66,7 @@ export function createPreviewService({workspace,research=createResearch(),deadli
   }
   return {
     get,
-    config(){return {researchConfigured:Boolean(research.configured()),limits:RESEARCH_LIMITS};},
+    config(){return {researchConfigured:Boolean(research.configured()),aiConfigured:Boolean(research.aiConfigured?.()??research.configured()),mapDataEnabled:Boolean(research.mapDataEnabled?.()),limits:RESEARCH_LIMITS};},
     list(){return db.prepare('SELECT id,name,postcode,building_id,status,stage,updated_at,spec,meta FROM quick_previews ORDER BY updated_at DESC LIMIT 60').all().map(({spec,meta,...row})=>{
       const model=JSON.parse(spec),details=JSON.parse(meta);
       return {...row,basis:details.basis,matchBasis:model.matchBasis,storeys:Math.max(...model.blocks.map(b=>b.floors)),blocks:model.blocks.length};
@@ -99,8 +100,12 @@ export function createPreviewService({workspace,research=createResearch(),deadli
     edit(id,input){
       record(input);const current=get(id);if(input.version!==current.version)throw new HttpError(409,'Preview changed. Refresh before saving your adjustment.');
       let spec;try{spec=validateSpec(input.spec);previewModel(spec);}catch{throw new HttpError(422,'Check the estimated dimensions and roof settings. Nothing has been saved.');}
+      // Manual controls may transform the envelope, not fabricate or relabel its source dataset.
+      const sourceKey=value=>JSON.stringify(value?{...value,manualDimensions:false}:null);
+      if(sourceKey(spec.mapped)!==sourceKey(current.spec.mapped))throw new HttpError(409,'Mapped source geometry changed. Reload before adjusting the envelope.');
       // A completed local edit is atomic and has one persistent undo point.
       spec.facts=[];spec.usedPhotoIds=[];spec.assumptions=[...spec.assumptions.slice(0,28),'Dimensions or appearance were adjusted by the user, not measured.'];
+      if(spec.mapped)spec.mapped.manualDimensions=true;
       workers.get(id)?.controller.abort();
       db.exec('BEGIN IMMEDIATE');
       try{

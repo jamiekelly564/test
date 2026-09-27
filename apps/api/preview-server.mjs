@@ -8,9 +8,9 @@ import { featureStatus } from '../../packages/domain/catalog.mjs';
 import { HttpError, record } from './validation.mjs';
 import { createPreviewService } from './preview/service.mjs';
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export const VERSION='0.7.0';
+export const VERSION='0.8.0';
 const CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
-const files={'/':'apps/web/public/index.html','/index.html':'apps/web/public/index.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs',
+const files={'/':'apps/web/public/index.html','/index.html':'apps/web/public/index.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
   '/modules/auto-model/geometry.mjs':'packages/auto-model/geometry.mjs','/modules/auto-model/viewer.mjs':'packages/auto-model/viewer.mjs'};
 const send=(req,res,status,value,type='application/json; charset=utf-8')=>{const bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value));res.writeHead(status,{'Content-Type':type,'Content-Length':bytes.length});res.end(req.method==='HEAD'?undefined:bytes);};
 async function jsonBody(req){
@@ -57,7 +57,7 @@ async function run(){
   await new Promise((resolve,reject)=>{const probe=createProbe();probe.once('error',()=>reject(new Error(`Port ${port} is already in use. Stop the other PropertyChecked terminal with Ctrl+C before starting this version.`)));probe.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>probe.close(resolve));});
   const app=createPreviewApp({lan});app.server.on('error',()=>{console.error('The local server could not start. Check the selected port.');app.close().finally(()=>process.exit(1));});
   app.server.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>{
-    console.log(`\nPropertyChecked ${VERSION} - easier building previews\nOpen http://localhost:${port}/start\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\nAI research: ${process.env.OPENAI_API_KEY?'key configured (access not yet verified)':'not configured; local estimates still work'}\n`);
+    console.log(`\nPropertyChecked ${VERSION} - map-based building estimates\nOpen http://localhost:${port}/start\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\nAI research: ${process.env.OPENAI_API_KEY?'key configured (access not yet verified)':'not configured; open map estimates still work'}\nOpen map data: ${process.env.MAP_DATA_ENABLED==='false'?'disabled':'enabled (downloads run only after creation/refinement)'}\n`);
     if(lan){console.log('Trusted Wi-Fi only. Access code: '+app.security.code);for(const ip of app.security.allowedHosts)if(!['localhost','127.0.0.1','[::1]'].includes(ip))console.log(`Phone: http://${ip}:${port}/start`);}
     console.log('Estimates are not surveys. No paid request runs until a preview/refinement is requested.');
   });
