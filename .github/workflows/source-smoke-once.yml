@@ -1,12 +1,12 @@
 name: One-off open map source check
 on:
-  push:
-    branches:
-      - diagnostic/open-map-once-v0.8
+  pull_request:
+    types: [opened]
 permissions:
   contents: read
 jobs:
   check:
+    if: github.head_ref == 'diagnostic/open-map-once-v0.8'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
