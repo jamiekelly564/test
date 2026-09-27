@@ -5,9 +5,9 @@
       "type": "node",
       "request": "launch",
       "name": "PropertyChecked - local PC",
-      "program": "${workspaceFolder}/apps/api/server.mjs",
+      "program": "${workspaceFolder}/apps/api/preview-server.mjs",
       "cwd": "${workspaceFolder}",
-      "runtimeArgs": ["--env-file-if-exists=.env"],
+      "runtimeArgs": [],
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"],
       "serverReadyAction": {"pattern": "Open (http://localhost:[0-9]+)", "uriFormat": "%s", "action": "openExternally"}
