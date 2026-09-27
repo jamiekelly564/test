@@ -1,0 +1,18 @@
+name: One-off open map source check
+on: create
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.ref == 'refs/heads/diagnostic/open-map-once-v0.8'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Current public sources, one postcode, no API credit
+        run: node scripts/check-map.mjs "Queensgate" "RH1 1RT"
