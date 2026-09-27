@@ -38,7 +38,7 @@ window.addEventListener('message',event=>{
   }
 });
 function shell(){
-  const links=[['/discover','home','Discover'],['/create','cube','Create 3D model'],['/buildings','building','Buildings'],['/surveys','clipboard','Survey requests'],['/tasks','check','Tasks'],['/packages','layers','Packages'],['/settings','settings','Setup & connections']];
+  const links=[['/discover','home','Discover'],['/create','cube','Build from plans'],['/buildings','building','Buildings'],['/surveys','clipboard','Survey requests'],['/tasks','check','Tasks'],['/packages','layers','Packages'],['/settings','settings','Setup & connections']];
   $('app').innerHTML=`<div class="app-shell"><button id="nav-backdrop" class="nav-backdrop" aria-label="Close navigation" hidden></button><aside class="sidebar" id="workspace-navigation"><button id="nav-close" class="nav-close mobile-only" aria-label="Close navigation">&times;</button><a class="brand" href="#/discover"><img src="/favicon.svg" alt=""/><div>Property<span>Checked</span><small>BUILDING WORKSPACE</small></div></a><p class="nav-label">YOUR WORKSPACE</p><nav>${links.map(([r,i,t])=>`<a href="#${r}" data-nav="${r}">${icon(i)}<span>${t}</span>${r==='/buildings'?'<span id="nav-count" class="nav-count">1</span>':''}</a>`).join('')}</nav><div class="sidebar-bottom"><div class="workspace-badge">${icon('monitor')}<div><strong>Local development</strong><small>Saved on your PC</small></div><i class="dot"></i></div><p>PropertyChecked v${e(S.status.version)}<br>Private preview &middot; No billing enabled</p></div></aside><div class="app-main"><header class="topbar"><button id="nav-toggle" class="icon-btn mobile-only" aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded="false">${icon('menu')}</button><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Discover</strong></div><div class="top-actions"><span class="local-pill"><i class="dot"></i> PC connected</span><a href="#/settings" class="avatar" title="Local owner workspace">PC</a></div></header><main id="main" tabindex="-1"></main></div></div>`;
   $('nav-toggle').onclick=()=>setNavOpen(!document.body.classList.contains('nav-open'));$('nav-close').onclick=()=>{setNavOpen(false);$('nav-toggle').focus();};$('nav-backdrop').onclick=()=>setNavOpen(false);document.querySelector('.sidebar').addEventListener('click',event=>{if(event.target.closest('a'))setNavOpen(false);});setNavOpen(false);
 }
@@ -55,7 +55,7 @@ async function render(){
     $('nav-count').textContent=S.buildings.length;
     let html;
     if(r.pathname==='/discover'){ $('breadcrumb').textContent='Discover';html=discover(); }
-    else if(r.pathname==='/create'){ $('breadcrumb').textContent='Create 3D model';html=autoPageHTML(r.searchParams.get('q')||''); }
+    else if(r.pathname==='/create'){ location.href='/build'; return; }
     else if(r.pathname==='/buildings'){ $('breadcrumb').textContent='Buildings';html=buildingsView(); }
     else if(r.pathname.startsWith('/building/')){
       const id=decodeURIComponent(r.pathname.split('/')[2]);
