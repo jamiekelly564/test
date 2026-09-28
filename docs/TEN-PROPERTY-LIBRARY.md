@@ -4,7 +4,7 @@
 
 At the existing local server, open `/examples/`. The original postcode/AI workspace at `/start` is unchanged. No new runtime package or API key is required. The static demo can also be copied as a standalone folder and opened from `index.html`; browser-local file storage support varies, and a visible warning is shown when it is unavailable.
 
-This is a portfolio of ten distinct public plan sources, with one selected-floor study for each. It is not ten complete surveyed buildings, an automatic plan-conversion service, or a set of current UK apartment-block drawings. It intentionally spans England, Australia and the USA to demonstrate different available layouts.
+This is a portfolio of ten distinct public plan sources presented as whole-building 3D studies. The available traced source level is retained as the evidence-backed reference; additional storeys needed to complete the building mass are explicitly labelled estimated/repeated geometry. It is not ten surveyed buildings, an automatic plan-conversion service, or proof that missing storeys match the reference plan. It intentionally spans England, Australia and the USA to demonstrate different available layouts.
 
 | Property | Modelled scope |
 |---|---|
@@ -21,13 +21,13 @@ This is a portfolio of ten distinct public plan sources, with one selected-floor
 
 ## What is real and what is approximate
 
-The original online drawings were actually downloaded and reviewed, not fabricated or substituted with generated plans. Major boundaries, spaces and a subset of openings were manually traced from the displayed source. Most presentation scale, all heights/finishes, wall thickness and minor details are assumed or simplified. Farnsworth's platform scale uses the marked 23.57 m dimension, but remains an approximate trace. The original source, selected scope and limitations are always available under Drawing/Compare.
+The original online drawings were actually downloaded and reviewed, not fabricated or substituted with generated plans. Major boundaries, spaces and a subset of openings were manually traced from the displayed source. The 3D viewer now stacks those reference layouts into complete building studies. Any storey without direct drawing coverage is shown as estimated/repeated geometry, with amber presentation and an explicit count. Most presentation scale, all heights/finishes, wall thickness and minor details are assumed or simplified. Farnsworth's platform scale uses the marked 23.57 m dimension, but remains an approximate trace. The original source, selected scope and limitations are always available under Drawing/Compare.
 
 Source drawings have their own limitations: Belton explicitly is an unscaled sketch; York House is an early scheme changed during construction. Source room names/letters are retained where practical; they do not establish current occupancy or building condition. These models are not appropriate for fire-safety decisions, measurements, construction or pricing remedial works.
 
 ## Included interactions
 
-- Search/filter ten properties, open a study, orbit/zoom, top view, low or full-height walls.
+- Search/filter ten properties, open a whole-building study, orbit/zoom, top view, and switch between low-wall cutaway and full-height stacked storeys.
 - Select a schematic space in the 3D view or 2D trace, compare with the actual plan preview, and follow the original full-resolution source link.
 - Export real self-contained GLB triangle geometry with source credit, licence, scope and assumption metadata. Source images are not copied onto the model as textures.
 - Twelve tracking capability categories, empty initially. Add browser-local demo tasks with location, owner, due date, notes and status. Export CSV; formula-like values are escaped. Nothing sends email or asserts a compliance pass.
