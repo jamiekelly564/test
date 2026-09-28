@@ -4,7 +4,7 @@ Local postcode-first building-management workspace with 3D estimates and a separ
 
 ## Ten-property plan library
 
-Open **http://localhost:3000/examples/** for the separate, self-contained ten-property demo. It includes actual public source drawings, simplified selected-floor 3D studies, 2D traces, source comparison, browser-local tracking and a blank hands-on time log. It needs no API key and does not alter live records or the private Marketfield model. See [scope, sources and testing](docs/TEN-PROPERTY-LIBRARY.md).
+Open **http://localhost:3000/examples/** for the separate, self-contained ten-property demo. It includes actual public source drawings, whole-building 3D studies, 2D reference traces, source comparison, browser-local tracking and a blank hands-on time log. Storeys without direct drawing coverage are explicitly shown as estimated/repeated geometry. It needs no API key and does not alter live records or the private Marketfield model. See [scope, sources and testing](docs/TEN-PROPERTY-LIBRARY.md).
 
 ## Architectural detail
 
