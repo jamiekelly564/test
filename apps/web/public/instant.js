@@ -1,3 +1,4 @@
+import { createWorkspaceUI } from './workspace-ui.js';
 import { defaultFacade, defaultArchitecture, editArchitecture } from '/modules/preview/architecture.mjs';
 import { escapeHtml as e } from './api.js';
 import { defaultSpec, previewModel } from '/modules/preview/model.mjs';
@@ -9,7 +10,8 @@ const $ = id => document.getElementById(id);
 const detailInputs={'detail-window-style':'windowStyle','detail-surface':'surface','detail-window-width':'windowWidth','detail-window-height':'windowHeight','detail-spacing':'spacing','detail-panes':'panesX','detail-frame':'frameColour','detail-wall':'wallColour','detail-roof':'roofColour'};
 const interiorOptions=()=>({layout:$('interior-layout').value,density:Number($('interior-density').value),furniture:$('interior-furniture').checked,fullWalls:$('interior-walls').value==='full'});
 const uuid = () => globalThis.crypto?.randomUUID?.() || `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const S = { current:null, viewer:null, rendered:'', shape:'', csrf:'', authenticated:false, online:false, busy:false, screen:'welcome', token:0, timer:0, failures:0, config:{researchConfigured:false}, saved:[], edit:null, editVersion:0, editBase:'', editError:'', dirty:false, block:0, mode:'exterior', expanded:false, pending:null, hasPlans:null, planBuilding:null };
+const S = { photoActive:false, photoMessage:'', contextBid:null, current:null, viewer:null, rendered:'', shape:'', csrf:'', authenticated:false, online:false, busy:false, screen:'welcome', token:0, timer:0, failures:0, config:{researchConfigured:false}, saved:[], edit:null, editVersion:0, editBase:'', editError:'', dirty:false, block:0, mode:'exterior', expanded:false, pending:null, hasPlans:null, planBuilding:null };
+let one;
 const notice = value => { $('notice').textContent = value || ''; $('notice').hidden = !value; };
 const sourceLink = (url,title) => { const safe=safeSource(url); return safe ? `<a href="${e(safe)}" target="_blank" rel="noopener noreferrer">${e(title)}</a>` : e(title); };
 const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); };
@@ -50,7 +52,7 @@ function controls() {
   $('refine').hidden=!p?.id||refining;
   const wait=retryRemaining(p);$('refine').disabled=!ready||S.dirty;
   $('refine').textContent='Check or add exterior photos';
-  $('research-availability').textContent=S.dirty?'Save or discard changes before adding photos.':'Check the building photo or upload your own. No paid work starts merely by opening that page.';
+  $('research-availability').textContent=S.dirty?'Save or discard changes before adding photos.':'Check the building photo or upload your own. The upload panel opens here; no paid work starts just by opening it.';
   $('adjust').disabled=!ready||!p?.id||!S.dirty||!!S.editError||conflict;
   $('discard').disabled=!S.dirty||S.busy;
   $('undo').hidden=!p?.canUndo;$('undo').disabled=!ready||S.dirty;
@@ -70,6 +72,7 @@ async function confirmAction(title,copy,yes) {
   return new Promise(resolve=>dialog.addEventListener('close',()=>resolve(dialog.returnValue==='yes'),{once:true}));
 }
 function setTab(name,focus=false) {
+  if(focus&&!$('model-settings').open)$('model-settings').showModal();
   for(const key of ['overview','adjust','evidence']){
     const selected=key===name,tab=$('tab-'+key);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;$('panel-'+key).hidden=!selected;
   }
@@ -108,16 +111,19 @@ function renderModel(force=false,fit=false) {
 }
 function show(p,{activate=false,fit=false}={}) {
   if(S.current?.id&&S.current.id!==p.id){clearEdits();S.block=0;S.viewer?.dispose();S.viewer=null;S.rendered='';S.mode='exterior';setModeButtons();}
-  S.current=p;
+  S.current=p;S.contextBid=p.building_id;
   if(S.planBuilding!==p.building_id){S.planBuilding=p.building_id;S.hasPlans=null;refreshPlans();}
   if(activate){S.screen='model';$('welcome').hidden=true;$('result').hidden=false;document.body.classList.add('has-model');$('return-current').hidden=false;}
+  one?.setCurrent(p);
   // Metadata-only progress may advance the version. Never rebase over changed geometry.
   if(S.dirty&&JSON.stringify(p.spec)===S.editBase)S.editVersion=p.version;
   $('title').textContent=p.name;$('property-location').textContent=p.postcode||'';$('basis').textContent=modelBasis(p);
   $('match-heading').textContent=p.spec.matchBasis==='likely'?'Our best building match':p.spec.matchBasis==='ambiguous'?'The match is uncertain':'A starting point, not a match';
   $('summary').textContent=p.spec.summary;
   $('match').textContent=p.spec.matchLabel;
-  const status=statusCopy(p);$('status-title').textContent=status.title;$('message').textContent=status.detail;
+  $('model-activity').hidden=!(p.status==='refining'||S.photoActive);
+  $('model-cover').hidden=!(p.status==='refining'&&!p.spec.mapped&&p.meta?.basis==='generic-starting-estimate');
+  const status=statusCopy(p);$('status-title').textContent=S.photoActive?'Updating your building from photos':status.title;$('message').textContent=S.photoActive?S.photoMessage:status.detail;
   $('progress').innerHTML=stageSteps(p).map(s=>`<li class="${s.state}" ${s.state==='active'?'aria-current="step"':''}>${e(s.label)}<span class="sr-only"> / ${s.state}</span></li>`).join('');
   const refs=[...(p.meta?.references||[]),...(p.meta?.photos||[])];
   $('facts').innerHTML=(p.spec.facts||[]).map(f=>{const s=refs.find(s=>s.id===f.sourceId);return `<p>${e(f.detail)} ${s?sourceLink(s.url,'Source'):''}</p>`;}).join('')||'<p class="muted">No sourced observations recorded yet. The current shape may be a generic estimate.</p>';
@@ -160,7 +166,7 @@ async function poll(token) {
     if(S.current?.id){const p=await request('/api/previews/'+encodeURIComponent(S.current.id));if(token!==S.token)return;show(p);}
     S.failures=0;connection(true);
     if(S.current?.status==='refining'||retryRemaining(S.current)>0)schedule();
-    else {await history();await refreshPlans();schedule(15000);}
+    else {await history();await refreshPlans();await one?.refresh();schedule(15000);}
   }catch(error){if(token!==S.token)return;if(error.status===404){notice('This saved preview was not found. Your other saved buildings are unchanged.');return;}S.failures++;schedule(Math.min(30000,3000*2**Math.min(S.failures,4)));}
 }
 async function act(fn) {
@@ -170,9 +176,10 @@ async function act(fn) {
   finally{S.busy=false;controls();schedule(S.current?.status==='refining'?1800:15000);}
 }
 async function mayLeave() {
-  if(!S.dirty)return true;
-  if(!await confirmAction('Discard unsaved adjustments?','Your last saved model will remain. These local adjustments have not been saved.','Discard adjustments'))return false;
-  clearEdits();return true;
+  if(one?.isBusy()){notice('Wait for the current save or upload to finish.');return false;}
+  if(!S.dirty&&!one?.isDirty())return true;
+  if(!await confirmAction('Discard unsaved changes?','Your saved model and tracking records will remain. Only this unsaved draft will be discarded.','Discard draft'))return false;
+  clearEdits();one?.discard();return true;
 }
 async function openPreview(id,push=false) {
   const p=await request('/api/previews/'+encodeURIComponent(id));
@@ -181,32 +188,39 @@ async function openPreview(id,push=false) {
   show(p,{activate:true,fit:true});$('title').focus({preventScroll:true});$('result').scrollIntoView({block:'start'});await history();
 }
 function returnWelcome() {
-  S.screen='welcome';$('welcome').hidden=false;$('result').hidden=true;document.body.classList.remove('has-model');$('return-current').hidden=!S.current;window.history.pushState(null,'','/start');$('name').focus();window.scrollTo({top:0});
+  one?.hide();S.screen='welcome';$('welcome').hidden=false;$('result').hidden=true;document.body.classList.remove('has-model');$('return-current').hidden=!S.current;window.history.pushState(null,'','/start');$('postcode').focus();window.scrollTo({top:0});
 }
 function rememberPending(value) {S.pending=value;try{value?sessionStorage.setItem('pc-pending-preview',JSON.stringify(value)):sessionStorage.removeItem('pc-pending-preview');}catch{}}
 try{const value=JSON.parse(sessionStorage.getItem('pc-pending-preview')||'null');if(value&&typeof value.name==='string'&&typeof value.postcode==='string'&&/^[a-zA-Z0-9-]{12,80}$/.test(value.requestKey))S.pending=value;}catch{}
-$('create-form').onsubmit=event=>{event.preventDefault();const input=propertyInput($('name').value,$('postcode').value);
-  for(const id of ['name','postcode']){$(id+'-error').textContent=input.errors[id]||'';$(id).setAttribute('aria-invalid',String(!!input.errors[id]));}
-  if(Object.keys(input.errors).length){$(Object.keys(input.errors)[0]).focus();return;}
-  $('postcode').value=input.postcode;
+$('create-form').onsubmit=event=>{event.preventDefault();submitPostcode();};
+async function acceptWorkspace(result,push=true){
+  if(result.kind==='choose'){
+    $('building-choices').hidden=false;$('building-choices').innerHTML='<p>'+e(result.message)+'</p>'+result.choices.map(b=>`<button type="button" class="secondary" data-building="${e(b.id)}">${e(b.name)}</button>`).join('');
+    for(const b of $('building-choices').querySelectorAll('button'))b.onclick=()=>submitPostcode(b.dataset.building);return;
+  }
+  $('building-choices').hidden=true;
+  if(result.preview){clearEdits();$('name').value=result.building.name;$('postcode').value=result.building.postcode;show(result.preview,{activate:true,fit:true});if(push)window.history.pushState(null,'','/start?preview='+encodeURIComponent(result.preview.id));await history();await refreshPlans();}
+  else{S.contextBid=result.building.id;await one.setBuilding(result.building.id);$('name').value=result.building.name;$('postcode').value=result.building.postcode;notice('Your building record is open. Create a preview here when ready. Existing records and original models are retained.');}
+}
+function submitPostcode(buildingId){
+  const code=postcodeValue($('postcode').value),name=$('name').value.trim(),errors={};if(!code)errors.postcode='Enter a full UK postcode, for example RH2 9QQ.';if(name&&(name.length<2||name.length>150))errors.name='Use a building name between 2 and 150 characters, or leave it blank.';
+  for(const id of ['name','postcode']){$(id+'-error').textContent=errors[id]||'';$(id).setAttribute('aria-invalid',String(!!errors[id]));}
+  if(Object.keys(errors).length){if(errors.name)$('optional-name').open=true;$(Object.keys(errors)[0]).focus();return;}
+  $('postcode').value=code;
   act(async()=>{
     if(!await mayLeave())return;
-    const saved=S.saved.find(p=>p.name.trim().toLowerCase()===input.name.toLowerCase()&&p.postcode===input.postcode);if(saved){await openPreview(saved.id,true);return;}
-    const key=S.pending?.name===input.name&&S.pending.postcode===input.postcode?S.pending.requestKey:uuid();rememberPending({...input,errors:undefined,requestKey:key});
-    $('create-wait').hidden=false;
-    try {
-      const job=await request('/api/photo-flow/jobs',{method:'POST',body:{name:input.name,postcode:input.postcode,requestKey:key,allowProcessing:true}});
-      rememberPending(null);location.assign('/build?job='+encodeURIComponent(job.id));
-    } finally {$('create-wait').hidden=true;}
-
+    const same=S.pending?.name===name&&S.pending?.postcode===code&&S.pending?.buildingId===(buildingId||'');const key=same?S.pending.requestKey:uuid();
+    rememberPending({name,postcode:code,buildingId:buildingId||'',requestKey:key});$('create-wait').hidden=false;
+    try{const result=await request('/api/workspace/start',{method:'POST',body:{name,postcode:code,...(buildingId?{buildingId}:{}),requestKey:key,allowProcessing:true}});rememberPending(null);await acceptWorkspace(result);}
+    finally{$('create-wait').hidden=true;}
   });
-};
+}
 $('postcode').onblur=()=>{const v=postcodeValue($('postcode').value);if(v)$('postcode').value=v;};
 for(const id of ['name','postcode'])$(id).oninput=()=>{$(id+'-error').textContent='';$(id).removeAttribute('aria-invalid');};
-$('nav-new').onclick=()=>act(async()=>{if(await mayLeave()){returnWelcome();$('name').value='';$('postcode').value='';}});
-$('wrong-building').onclick=()=>act(async()=>{if(await mayLeave())location.assign('/build?building='+encodeURIComponent(S.current.building_id));});
+$('nav-new').onclick=()=>act(async()=>{if(await mayLeave()){returnWelcome();$('name').value='';$('postcode').value='';$('optional-name').open=false;}});
+$('wrong-building').onclick=()=>act(async()=>{if(await mayLeave()){returnWelcome();$('optional-name').open=true;notice('Change the postcode or add the correct building name. Your existing records are kept separately.');}});
 $('nav-saved').onclick=()=>act(async()=>{await history();if(!S.saved.length){notice('Create your first estimate to see it here.');return;} $('history-section').scrollIntoView({block:'start'});$('history-search').focus({preventScroll:true});});
-$('return-model').onclick=()=>{if(S.current)show(S.current,{activate:true});};
+$('return-model').onclick=()=>{if(S.current){show(S.current,{activate:true});one.refresh();}};
 $('history-search').oninput=renderSaved;
 for(const name of ['overview','adjust','evidence'])$('tab-'+name).onclick=()=>setTab(name);
 $('quick-edit').onclick=()=>{setTab('adjust',true);$('tab-adjust').scrollIntoView({block:'nearest'});};
@@ -250,11 +264,11 @@ $('adjust-form').onsubmit=event=>{event.preventDefault();act(async()=>{
 $('discard').onclick=()=>{clearEdits();show(S.current);};
 $('undo').onclick=()=>act(async()=>{const p=await request('/api/previews/'+S.current.id+'/undo',{method:'POST',body:{version:S.current.version}});clearEdits();show(p);await history();});
 $('stop').onclick=()=>act(async()=>{show(await request('/api/previews/'+S.current.id+'/stop',{method:'POST',body:{}}));});
-$('refine').onclick=()=>act(async()=>{if(await mayLeave())location.assign('/build?building='+encodeURIComponent(S.current.building_id));});
+$('refine').onclick=()=>one.openFiles();
 for(const mode of ['exterior','cutaway','exploded','concept'])$('view-'+mode).onclick=()=>{if(mode==='concept'&&S.hasPlans!==false){notice('Example layouts are only shown before real plans have been provided.');return;}S.mode=mode;if(mode==='concept'&&$('floor').value==='all')$('floor').value='0';setModeButtons();renderModel();S.viewer?.fit();};
 $('floor').onchange=()=>{renderModel();S.viewer?.fit();};$('reset').onclick=()=>S.viewer?.reset();$('top').onclick=()=>S.viewer?.top();
 $('zoom-in').onclick=()=>S.viewer?.zoom(.82);$('zoom-out').onclick=()=>S.viewer?.zoom(1.22);
-const outsideModel=()=>[document.querySelector('.top'),$('connection-banner'),$('welcome'),document.querySelector('.result-heading'),document.querySelector('.research-strip'),document.querySelector('.side-card'),document.querySelector('.model-boundary'),$('history-section'),document.querySelector('footer')];
+const outsideModel=()=>[$('tracking'),document.querySelector('.top'),$('connection-banner'),$('welcome'),document.querySelector('.result-heading'),document.querySelector('.research-strip'),document.querySelector('.side-card'),document.querySelector('.model-boundary'),$('history-section'),document.querySelector('footer')];
 function expanded(on){S.expanded=on;document.body.classList.toggle('model-expanded',on);$('expand').setAttribute('aria-pressed',String(on));$('expand').setAttribute('aria-label',on?'Close expanded model view':'Expand model view');$('expand').textContent=on?'\u00d7':'\u26f6';for(const node of outsideModel())if(node)node.inert=on;requestAnimationFrame(()=>S.viewer?.invalidate());if(!on)$('expand').focus();}
 $('expand').onclick=()=>expanded(!S.expanded);
 window.addEventListener('keydown',event=>{
@@ -265,7 +279,7 @@ $('reconnect').onclick=()=>act(async()=>{
   if(!await session())return;
   if(S.current?.id)show(await request('/api/previews/'+S.current.id));
   await history();
-  if(!S.current?.id&&S.pending){const saved=S.saved.find(p=>p.name.trim().toLowerCase()===S.pending.name.toLowerCase()&&p.postcode===S.pending.postcode);if(saved){await openPreview(saved.id);rememberPending(null);}}
+  if(!S.current?.id&&S.pending){try{await acceptWorkspace(await request('/api/workspace/requests/'+S.pending.requestKey));rememberPending(null);}catch(err){if(err.status!==404)throw err;}}
   connection(true);notice('Reconnected. No research or save request was repeated.');
 });
 async function copyText(text,target) {
@@ -291,16 +305,26 @@ $('login-form').onsubmit=event=>{event.preventDefault();act(async()=>{const data
 async function boot() {
   if(!await session())return;
   await history();
-  const id=new URL(location.href).searchParams.get('preview');
-  if(id&&/^[a-zA-Z0-9-]{1,80}$/.test(id))await openPreview(id);
-  else if(S.pending){$('name').value=S.pending.name;$('postcode').value=S.pending.postcode;const saved=S.saved.find(p=>p.name.toLowerCase()===S.pending.name.toLowerCase()&&p.postcode===S.pending.postcode);if(saved){await openPreview(saved.id);rememberPending(null);}}
+  const uploadRequested=location.pathname==='/build';
+  const params=new URL(location.href).searchParams,id=params.get('preview'),bid=params.get('building'),jid=params.get('job');
+  if(id&&/^[a-zA-Z0-9-]{1,80}$/.test(id)){await openPreview(id);await refreshPlans();}
+  else if(bid&&/^[a-zA-Z0-9-]{1,100}$/.test(bid)){await acceptWorkspace(await request('/api/workspace/buildings/'+bid));if(uploadRequested)await one.openFiles();}
+  else if(jid&&/^[a-zA-Z0-9-]{1,100}$/.test(jid)){const job=await request('/api/photo-flow/jobs/'+jid);await acceptWorkspace(await request('/api/workspace/buildings/'+job.buildingId));await one.openFiles();}
+  else if(S.pending){$('name').value=S.pending.name;$('postcode').value=S.pending.postcode;try{await acceptWorkspace(await request('/api/workspace/requests/'+S.pending.requestKey));rememberPending(null);}catch(err){if(err.status!==404)throw err;}}
   controls();schedule();
 }
-window.addEventListener('popstate',()=>act(async()=>{if(!await mayLeave()){if(S.current?.id)window.history.pushState(null,'','/start?preview='+encodeURIComponent(S.current.id));return;}const id=new URL(location.href).searchParams.get('preview');if(id)await openPreview(id);else{S.screen='welcome';$('welcome').hidden=false;$('result').hidden=true;}}));
+// Optional tools are panels on this page, not links to different customer pages.
+one=createWorkspaceUI({request,getState:()=>S,onPreview:p=>show(p,{activate:true,fit:true}),onPlanChange:value=>{S.hasPlans=value;if(value&&S.mode==='concept'){S.mode='exterior';setModeButtons();renderModel(true);}controls();},confirmAction,
+  beforeModelChange:async()=>{if(!S.dirty)return true;if(!await confirmAction('Discard unsaved model changes?','Your saved model is unchanged.','Discard model changes'))return false;clearEdits();show(S.current);return true;},
+  onPhotoActive:(active,message)=>{S.photoActive=active;S.photoMessage=message;$('model-activity').hidden=!(active||S.current?.status==='refining');if(active){$('status-title').textContent='Updating your building from photos';$('message').textContent=message;}},notice});
+$('add-files').onclick=()=>one.openFiles();$('model-options').onclick=()=>setTab('adjust',true);
+$('plans').onclick=ev=>{ev.preventDefault();one.openFiles();};$('survey').onclick=ev=>{ev.preventDefault();one.openSurvey();};$('workspace').onclick=ev=>{ev.preventDefault();one.focusTracking();};
+if(location.hash.startsWith('#/'))location.replace('/admin'+location.hash);
+window.addEventListener('popstate',()=>act(async()=>{if(!await mayLeave()){if(S.current?.id)window.history.pushState(null,'','/start?preview='+encodeURIComponent(S.current.id));return;}const id=new URL(location.href).searchParams.get('preview');if(id)await openPreview(id);else{one?.hide();S.screen='welcome';$('welcome').hidden=false;$('result').hidden=true;document.body.classList.remove('has-model');}}));
 document.addEventListener('visibilitychange',()=>{clearTimeout(S.timer);if(!document.hidden)schedule(200);});
 window.addEventListener('online',()=>schedule(200));
-window.addEventListener('beforeunload',event=>{if(S.dirty){event.preventDefault();event.returnValue='';}});
-window.addEventListener('pagehide',()=>{clearTimeout(S.timer);++S.token;S.viewer?.dispose();S.viewer=null;S.rendered='';});
+window.addEventListener('beforeunload',event=>{if(S.dirty||one?.isDirty()||one?.isBusy()){event.preventDefault();event.returnValue='';}});
+window.addEventListener('pagehide',()=>{clearTimeout(S.timer);++S.token;one?.dispose();S.viewer?.dispose();S.viewer=null;S.rendered='';});
 window.addEventListener('pageshow',event=>{if(event.persisted){renderModel(true);schedule(200);}});
 $('release').textContent=RELEASE;
 boot().catch(error=>{notice(error.message);schedule(5000);});

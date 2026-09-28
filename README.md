@@ -1,6 +1,6 @@
-# PropertyChecked 0.10.0
+# PropertyChecked 0.11.0
 
-Local building-management workspace with photo-first 3D estimates and a separate evidence-based reconstruction workflow. Models are interactive geometry, not generated pictures. They are not surveys or automated fire-safety assessments.
+Local postcode-first building-management workspace with 3D estimates and a separate evidence-based reconstruction workflow. Models are interactive geometry, not generated pictures. They are not surveys or automated fire-safety assessments.
 
 ## Architectural detail
 
@@ -20,13 +20,13 @@ Stop on a Git error instead of resetting local work. Use the existing Node insta
 
 Windows users can subsequently double-click **Start-PropertyChecked.cmd** inside this folder. It starts the same local app from the correct directory. It does not update Git, alter keys or stop another server.
 
-## Photo-first creation
+## One building workspace
 
-Enter the building name and postcode. A loading bar shows the online photo search. Check the returned photo and choose **Yes, create my building** or **No, I'll add a photo**. Missing photos lead to a simple upload area, not another technical source-management form. You may explicitly continue without a photo, but the resulting exterior remains an estimate.
+Enter a postcode and create the model; the same page then shows what you can track. A building name is optional. Twelve category cards open manual records with locations, owners, notes, due dates and statuses. Records start empty and are saved locally; no sensors, discovered assets or safety verdicts are implied.
 
-`/build?building=...` now opens **Photos & floor plans**. Add photos with a file picker, drag-and-drop or supported camera picker; add real plans separately. Uploading alone does not invoke AI. Building from your selected photos explicitly supplies those image pixels to both visual passes. Original plan bytes are saved for later processing/review, not converted automatically into verified rooms.
+Photos, plans, optional online-photo confirmation, model adjustments, sources and survey requirements open in panels without leaving the building. The default postcode journey no longer requires navigating through a separate photo wizard. Existing geometry, detailed controls, invented interior examples and save/undo remain.
 
-The existing model page retains camera controls, source notes, searchable saved models, section corrections and one-step manual undo. **Example layout** adds explicitly invented floor zones/dividers until real plans are uploaded. It never creates inspected assets or claims an actual interior. See [Photo-first workflow and limits](docs/PHOTO-FIRST.md).
+`/start` and old `/build?building=...` links serve the same workspace. The old administrative workspace is retained at `/admin`, the previous photo screen at `/photo-tools`, and technical drawing tools at `/advanced-build`. See [One-page workspace, tracking and limits](docs/SINGLE-WORKSPACE.md).
 
 ## Map and photo evidence
 

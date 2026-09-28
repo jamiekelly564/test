@@ -1,7 +1,7 @@
 import { defaultFacade } from './architecture.mjs';
 import { validateSpec } from './model.mjs';
 
-export const RELEASE = '0.10.0';
+export const RELEASE = '0.11.0';
 export function postcodeValue(value) {
   const raw = String(value || '').toUpperCase().replace(/\s/g, '');
   if (!/^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/.test(raw)) return null;
