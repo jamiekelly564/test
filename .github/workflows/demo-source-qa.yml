@@ -1,0 +1,55 @@
+name: Temporary demo source collection
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  collect:
+    if: github.head_ref == 'feature/ten-property-demo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download public licensed drawing candidates once
+        shell: python
+        run: |
+          import urllib.request, urllib.parse, json, pathlib, time, hashlib
+          root=pathlib.Path('demo-source-qa'); root.mkdir()
+          titles=['Schmidt-Lademann house floor plan.svg','McCraith House Floor Plans.jpg','Simon house floor plan.jpg','Boyd House II img plans.jpg','Beverley Hills-Apartment 8-61.jpg','Arlington House, ground Floor plan.jpg','Belton Plan.jpg',"20 St James's Square ground.jpg",'House at Radlett (ground floor plan).jpg','Plan - Edith Farnsworth House, 14520 River Road, Plano, Kendall County, IL HABS ILL,47-PLAN.V,1- (sheet 3 of 8).tif','YORK HOUSE Plan of the Principal Floor.jpg','Cambridge cottage floorplan.jpg']
+          records=[]
+          def get(url,limit):
+            req=urllib.request.Request(url,headers={'User-Agent':'PropertyCheckedDemo/1.0 (https://github.com/jamiekelly564/test; explicit public floor-plan study)'})
+            with urllib.request.urlopen(req,timeout=25) as r:
+              data=r.read(limit+1)
+              if len(data)>limit: raise ValueError('size limit')
+              return data
+          for i,title in enumerate(titles):
+            time.sleep(1)
+            try:
+              query=urllib.parse.urlencode({'action':'query','format':'json','titles':'File:'+title,'prop':'imageinfo','iiprop':'url|extmetadata|size','maxlag':'5'})
+              data=json.loads(get('https://commons.wikimedia.org/w/api.php?'+query,1000000))
+              page=next(iter(data.get('query',{}).get('pages',{}).values()))
+              info=page.get('imageinfo',[{}])[0]
+              u=urllib.parse.urlsplit(info.get('url',''))
+              if u.scheme!='https' or u.netloc!='upload.wikimedia.org' or not u.path.startswith('/wikipedia/commons/'): raise ValueError('unsupported file URL')
+              meta=info.get('extmetadata',{})
+              licence=meta.get('LicenseShortName',{}).get('value','')
+              if not ('CC BY' in licence or 'Public domain' in licence or 'PD'==licence): raise ValueError('licence needs review: '+licence)
+              body=get(info['url'],16000000)
+              fn=str(i+1).zfill(2)+pathlib.Path(u.path).suffix
+              (root/fn).write_bytes(body)
+              records.append({'index':i+1,'title':title,'file':fn,'info':info,'sha256':hashlib.sha256(body).hexdigest()})
+              print(i+1,title,len(body),licence)
+            except Exception as e:
+              records.append({'index':i+1,'title':title,'error':str(e)[:200]})
+              print(i+1,'Not collected:',str(e)[:100])
+          (root/'source-records.json').write_text(json.dumps(records,indent=2),encoding='utf8')
+      - run: git archive --format=zip HEAD -o demo-source-qa/repository.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ten-property-source-qa
+          path: demo-source-qa
+          retention-days: 1
