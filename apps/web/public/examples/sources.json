@@ -1,0 +1,222 @@
+[
+  {
+    "id": "farnsworth",
+    "name": "Edith Farnsworth House",
+    "level": "House and terraces",
+    "limitations": "The slab outline uses a marked source dimension. Wall heights, terrace levels, material colours and window construction are illustrative. Only this plan sheet is reconstructed.",
+    "title": "Plan - Edith Farnsworth House, 14520 River Road, Plano, Kendall County, IL HABS ILL,47-PLAN.V,1- (sheet 3 of 8).tif",
+    "url": "https://commons.wikimedia.org/wiki/File:Plan_-_Edith_Farnsworth_House,_14520_River_Road,_Plano,_Kendall_County,_IL_HABS_ILL,47-PLAN.V,1-_(sheet_3_of_8).tif",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/f/ff/Plan_-_Edith_Farnsworth_House%2C_14520_River_Road%2C_Plano%2C_Kendall_County%2C_IL_HABS_ILL%2C47-PLAN.V%2C1-_%28sheet_3_of_8%29.tif?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Milnarik, Elizabeth, creator",
+    "licence": "Public domain",
+    "licenceUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "421cc1712ef0ce08a14912e5d5c78f1c3247e9bd19fcb1f13ca98982ee0dba3b",
+    "retrieved": "2026-09-28",
+    "image": "assets/farnsworth.webp",
+    "imageSize": [
+      1150,
+      767
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC0 1.0",
+    "modelLicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "radlett",
+    "name": "House at Radlett",
+    "level": "Ground floor, 1907 drawing",
+    "limitations": "Historical published plan; not checked against the present building. Small service partitions and detailed joinery are simplified. Height and finishes are assumptions.",
+    "title": "House at Radlett (ground floor plan).jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:House_at_Radlett_(ground_floor_plan).jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/9/9a/House_at_Radlett_%28ground_floor_plan%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Unknown author Unknown author",
+    "licence": "Public domain",
+    "licenceUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "6d0ee86ad13f5675567b9aeab3d07026b22ff8b46da147965a6530902b49df67",
+    "retrieved": "2026-09-28",
+    "image": "assets/radlett.webp",
+    "imageSize": [
+      1150,
+      596
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC0 1.0",
+    "modelLicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "beverley",
+    "name": "Beverley Hills Apartments",
+    "level": "Apartment 8/61",
+    "limitations": "One apartment only, not the complete block. Door openings and joinery are simplified. Presentation scale is assumed.",
+    "title": "Beverley Hills-Apartment 8-61.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Beverley_Hills-Apartment_8-61.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Beverley_Hills-Apartment_8-61.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Josh.Michael.Wilson",
+    "licence": "CC BY-SA 3.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "sha256": "232035b2fdb6b02617c2c22a170a2c79ae06478ab21f289b4ae1657a5c763ebb",
+    "retrieved": "2026-09-28",
+    "image": "assets/beverley.webp",
+    "imageSize": [
+      813,
+      1150
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC BY-SA 3.0",
+    "modelLicenceUrl": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  {
+    "id": "simon",
+    "name": "Simon House",
+    "level": "Floor plan",
+    "limitations": "Main floor and garage zones are simplified. Pool geometry follows the diagram; depths, furnishings, finishes and enclosure heights are not established.",
+    "title": "Simon house floor plan.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Simon_house_floor_plan.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/0/0d/Simon_house_floor_plan.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Samuelchin",
+    "licence": "CC BY-SA 3.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "sha256": "bdd66695f8d83caaa4f9c8ddef31e310b52593d980af4422a68a2949e4d8fc08",
+    "retrieved": "2026-09-28",
+    "image": "assets/simon.webp",
+    "imageSize": [
+      813,
+      1150
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC BY-SA 3.0",
+    "modelLicenceUrl": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  {
+    "id": "walsh",
+    "name": "Walsh Street House",
+    "level": "First floor",
+    "limitations": "First floor only. The parents' suite shown separately on the source sheet is not modelled. The courtyard remains open.",
+    "title": "Boyd House II img plans.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Boyd_House_II_img_plans.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/4/43/Boyd_House_II_img_plans.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Rebecca D.G",
+    "licence": "CC BY-SA 3.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "sha256": "73f650209a40076a49e013237c563317fa9409cc8cdef771ce84453a73985dcb",
+    "retrieved": "2026-09-28",
+    "image": "assets/walsh.webp",
+    "imageSize": [
+      1150,
+      655
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC BY-SA 3.0",
+    "modelLicenceUrl": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  {
+    "id": "mccraith",
+    "name": "McCraith House",
+    "level": "First level",
+    "limitations": "First-level study only. Roof form, actual heights and the ground-floor enclosure are not reconstructed.",
+    "title": "McCraith House Floor Plans.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:McCraith_House_Floor_Plans.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/2/24/McCraith_House_Floor_Plans.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Sean Guy",
+    "licence": "CC BY-SA 4.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sha256": "f7bee766bfba4a7b168e9132f8110665a1e5bb6741c30ff4c2c9bbae94650368",
+    "retrieved": "2026-09-28",
+    "image": "assets/mccraith.webp",
+    "imageSize": [
+      813,
+      1150
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC BY-SA 4.0",
+    "modelLicenceUrl": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  {
+    "id": "schmidt",
+    "name": "Schmidt-Lademann House",
+    "level": "Ground floor",
+    "limitations": "Only the ground floor is modelled. The source is a reconstructed sketch, not an as-built survey. First-floor sheet is visible in the original but not modelled.",
+    "title": "Schmidt-Lademann house floor plan.svg",
+    "url": "https://commons.wikimedia.org/wiki/File:Schmidt-Lademann_house_floor_plan.svg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/2/26/Schmidt-Lademann_house_floor_plan.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Frank-Peter Schmidt-Lademann",
+    "licence": "CC BY-SA 4.0",
+    "licenceUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "sha256": "82497a13ca3b69a9026a53a1b6fc5dd76e03672f722e075f95d70ec5ee28ffeb",
+    "retrieved": "2026-09-28",
+    "image": "assets/schmidt.webp",
+    "imageSize": [
+      805,
+      720
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC BY-SA 4.0",
+    "modelLicenceUrl": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  {
+    "id": "cambridge",
+    "name": "Cambridge Cottage",
+    "level": "Historical ground floor",
+    "limitations": "Major rooms are traced from the historical plan. Small service cells, irregular wall thicknesses and all elevations are simplified. Current use and condition are not assessed.",
+    "title": "Cambridge cottage floorplan.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Cambridge_cottage_floorplan.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/8/80/Cambridge_cottage_floorplan.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Unknown Unknown",
+    "licence": "Public domain",
+    "licenceUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "5f7612e58e7e8da00c8ebeb646e896a38858997ffd28d5bd9d464a8250ffb58d",
+    "retrieved": "2026-09-28",
+    "image": "assets/cambridge.webp",
+    "imageSize": [
+      1150,
+      754
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC0 1.0",
+    "modelLicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "belton",
+    "name": "Belton House",
+    "level": "Illustrative principal layout",
+    "limitations": "The author calls this an unscaled rough sketch for illustration only; accuracy is not guaranteed. Room letters are retained without guessing their use. This is a diagram study, not a measured floor plan.",
+    "title": "Belton Plan.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Belton_Plan.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/f/f7/Belton_Plan.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Giano  at  English Wikipedia",
+    "licence": "Public domain",
+    "licenceUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "70a6fab69de7528c659d3eaa9c31373a108df055473499d9cc84e197832fc8d1",
+    "retrieved": "2026-09-28",
+    "image": "assets/belton.webp",
+    "imageSize": [
+      1150,
+      899
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC0 1.0",
+    "modelLicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+    "id": "lancaster",
+    "name": "York / Lancaster House",
+    "level": "Principal floor, 1827 scheme",
+    "limitations": "The source explicitly describes an early scheme altered during construction. This study does not represent the completed or current Lancaster House; small corner rooms and stairs are simplified.",
+    "title": "YORK HOUSE Plan of the Principal Floor.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:YORK_HOUSE_Plan_of_the_Principal_Floor.jpg",
+    "original": "https://upload.wikimedia.org/wikipedia/commons/e/e8/YORK_HOUSE_Plan_of_the_Principal_Floor.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "credit": "Historical drawing; author not recorded on the source page",
+    "licence": "Public domain",
+    "licenceUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "8dd0a935579ec4258d44bf631c529147d9e82beba17bbea50b1668fb77055747",
+    "retrieved": "2026-09-28",
+    "image": "assets/lancaster.webp",
+    "imageSize": [
+      712,
+      522
+    ],
+    "alterations": "Source preview resized and converted to WebP. Model outlines and partitions manually simplified from the selected drawing; heights, thicknesses and display finishes are assumed.",
+    "modelLicence": "CC0 1.0",
+    "modelLicenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+  }
+]
