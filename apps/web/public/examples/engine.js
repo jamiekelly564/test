@@ -60,9 +60,24 @@ function geometry(p,{cutaway=true,furniture=false}={}){
   box(cx-w/2,cz-d/2,w,d,.05,bed?.5:.65,colours.furniture,r.id+'-furnishing','furniture');
   if(bed)box(cx-w/2+.07,cz-d/2+.09,w-.14,.45,.5,.60,'#eeeade',r.id+'-pillow','furniture');
  }
+ const storeys=Math.max(1,Math.min(12,Number(p.wholeBuilding?.storeys)||1)),pitch=H+.32;
+ if(storeys>1){
+  const sourceObjects=[...objects],estimatedColour=o=>o.kind==='glazing'?'#c5b889':o.kind==='frame'?'#998c68':o.kind==='door'?'#b49b6f':o.kind==='space'?'#eadfc4':o.kind==='base'?'#cfc4a9':'#d8c9a7';
+  for(let level=1;level<storeys;level++){
+   const dy=level*pitch;
+   for(const o of sourceObjects){
+    if(o.kind==='furniture')continue;
+    const colour=estimatedColour(o),id=o.id+'-estimated-storey-'+(level+1);
+    const faces=o.faces.map(face=>({...face,id,colour,estimated:true,points:face.points.map(v=>[v[0],v[1]+dy,v[2]])}));
+    const positions=o.positions.map((v,i)=>i%3===1?v+dy:v);
+    objects.push({...o,id,colour,estimated:true,storey:level+1,faces,positions,normals:[...o.normals]});
+   }
+  }
+ }
  const pts=objects.flatMap(o=>o.faces.flatMap(f=>f.points)),bounds={minX:Infinity,maxX:-Infinity,minZ:Infinity,maxZ:-Infinity};
  for(const a of pts){bounds.minX=Math.min(bounds.minX,a[0]);bounds.maxX=Math.max(bounds.maxX,a[0]);bounds.minZ=Math.min(bounds.minZ,a[2]);bounds.maxZ=Math.max(bounds.maxZ,a[2]);}
- return {objects,faces:objects.flatMap(o=>o.faces),bounds,height:H,property:p,coord};
+ const totalHeight=(storeys-1)*pitch+H;
+ return {objects,faces:objects.flatMap(o=>o.faces),bounds,height:totalHeight,storeys,estimatedStoreys:Math.max(0,storeys-1),property:p,coord};
 }
 function projection(scene,width,height,theta=-.60,elevation=.82,zoom=1){
  const b=scene.bounds,center=[(b.minX+b.maxX)/2,scene.height*.18,(b.minZ+b.maxZ)/2],right=[Math.cos(theta),0,-Math.sin(theta)],up=[-Math.sin(theta)*Math.sin(elevation),Math.cos(elevation),-Math.cos(theta)*Math.sin(elevation)],direction=[Math.sin(theta)*Math.cos(elevation),Math.sin(elevation),Math.cos(theta)*Math.cos(elevation)];
@@ -102,7 +117,7 @@ class Viewer{
   ctx.strokeStyle='#dfe5dc';ctx.lineWidth=.6*ratio;const b=this.scene.bounds;for(let a=Math.floor(b.minX)-4;a<b.maxX+4;a+=2){const c=p.project([a,-.35,b.minZ-4]),d=p.project([a,-.35,b.maxZ+4]);ctx.beginPath();ctx.moveTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.stroke();}for(let a=Math.floor(b.minZ)-4;a<b.maxZ+4;a+=2){const c=p.project([b.minX-4,-.35,a]),d=p.project([b.maxX+4,-.35,a]);ctx.beginPath();ctx.moveTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.stroke();}
   for(const f of visibleFaces(this.scene,p)){ctx.beginPath();f.screen.forEach((v,i)=>i?ctx.lineTo(v[0],v[1]):ctx.moveTo(v[0],v[1]));ctx.closePath();const color=f.id===this.selected&&f.kind==='space'?'#91b7a6':shade(f.colour,f.light);ctx.fillStyle=color;ctx.strokeStyle=color;ctx.lineWidth=.55;ctx.fill();ctx.stroke();}
   const room=this.property.rooms.find(r=>r.id===this.selected);if(room){const poly=room.polygon.map(this.scene.coord).map(q=>p.project([q[0],.05,q[1]]));ctx.beginPath();poly.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.closePath();ctx.lineWidth=2.2*ratio;ctx.strokeStyle='#177861';ctx.stroke();}
-  ctx.font=`${10*ratio}px system-ui`;ctx.fillStyle='#5d706a';if(rect.width<500){ctx.textAlign='center';ctx.fillText('SOURCE-PLAN STUDY / NOT SURVEYED',w/2,h-28*ratio);ctx.fillText('HEIGHTS & FINISHES ASSUMED',w/2,h-13*ratio);}else{ctx.textAlign='left';ctx.fillText('PROPERTYCHECKED / SOURCE-PLAN STUDY',20*ratio,h-18*ratio);ctx.textAlign='right';ctx.fillText('HEIGHTS & FINISHES ASSUMED',w-20*ratio,h-18*ratio);}
+  ctx.font=`${10*ratio}px system-ui`;ctx.fillStyle='#5d706a';if(rect.width<500){ctx.textAlign='center';ctx.fillText('WHOLE-BUILDING STUDY / NOT SURVEYED',w/2,h-28*ratio);ctx.fillText('AMBER STOREYS = ESTIMATED',w/2,h-13*ratio);}else{ctx.textAlign='left';ctx.fillText('PROPERTYCHECKED / WHOLE-BUILDING STUDY',20*ratio,h-18*ratio);ctx.textAlign='right';ctx.fillText('HEIGHTS & FINISHES ASSUMED',w-20*ratio,h-18*ratio);}
  }
  dispose(){this.abort.abort();this.observer.disconnect();cancelAnimationFrame(this.raf);}
 }
