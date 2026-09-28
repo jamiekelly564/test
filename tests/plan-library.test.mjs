@@ -7,10 +7,11 @@ import { join } from 'node:path';
 import { createPreviewApp } from '../apps/api/preview-server.mjs';
 import { exampleFiles,exampleMime } from '../apps/api/examples/routes.mjs';
 import '../apps/web/public/examples/data.js';
+import '../apps/web/public/examples/whole-buildings.js';
 import '../apps/web/public/examples/engine.js';
 const properties=globalThis.PC_PROPERTIES,engine=globalThis.PC_PLAN_ENGINE;
 
-test('ten distinct source-based selected-floor studies, not invented complete buildings',()=>{
+test('ten whole-building studies keep source-backed and estimated storeys explicit',()=>{
  assert.equal(properties.length,10);assert.equal(new Set(properties.map(p=>p.id)).size,10);
  assert.equal(new Set(properties.map(p=>p.source.url)).size,10);
  for(const p of properties){
@@ -20,6 +21,7 @@ test('ten distinct source-based selected-floor studies, not invented complete bu
   assert.ok(p.source.credit&&p.source.licence&&p.source.modelLicenceUrl);
   assert.equal(new Set(p.rooms.map(r=>r.id)).size,p.rooms.length);
   assert.equal(p.height,2.8);assert.match(p.source.alterations,/assumed/);
+  assert.ok(p.wholeBuilding&&p.wholeBuilding.storeys>=1);assert.equal(p.wholeBuilding.sourceBackedStoreys,1);assert.equal(p.wholeBuilding.estimatedStoreys,p.wholeBuilding.storeys-1);
  }
  assert.match(properties.find(p=>p.id==='belton').limitations,/unscaled rough sketch/);
  assert.match(properties.find(p=>p.id==='lancaster').limitations,/early scheme altered/);
@@ -30,7 +32,7 @@ for(const property of properties){
  test('real geometry, normals and attributed GLB: '+property.id,()=>{
   for(const cutaway of [true,false]){
    const scene=engine.geometry(property,{cutaway,furniture:true});
-   assert.ok(scene.faces.length>20);assert.ok(scene.faces.length<10000);
+   assert.ok(scene.faces.length>20);assert.ok(scene.faces.length<50000);assert.equal(scene.storeys,property.wholeBuilding.storeys);assert.equal(scene.estimatedStoreys,property.wholeBuilding.estimatedStoreys);
    for(const o of scene.objects){assert.equal(o.positions.length,o.normals.length);assert.ok(o.positions.every(Number.isFinite));
     for(let i=0;i<o.positions.length;i+=9){const a=o.positions.slice(i,i+3),b=o.positions.slice(i+3,i+6),c=o.positions.slice(i+6,i+9),n=o.normals.slice(i,i+3),ab=b.map((v,j)=>v-a[j]),ac=c.map((v,j)=>v-a[j]);const cr=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];assert.ok(cr.reduce((s,v,j)=>s+v*n[j],0)>=-1e-7,'triangle normal winding');}
    }
@@ -60,7 +62,7 @@ test('local source previews exist with supported image signatures and matching m
 });
 test('demo assets use a fixed allowlist and do not expose private paths',()=>{
  assert.equal(exampleMime('/examples/assets/unknown.webp'),null);assert.equal(exampleMime('/examples/assets/simon.webp'),'image/webp');
- assert.equal(exampleMime('/examples/sources.json'),'application/json; charset=utf-8');
+ assert.equal(exampleMime('/examples/sources.json'),'application/json; charset=utf-8');assert.equal(exampleMime('/examples/whole-buildings.js'),'text/javascript; charset=utf-8');
  assert.ok(Object.values(exampleFiles).every(v=>v.startsWith('apps/web/public/examples/')));
 });
 test('demo is self-contained and does not call inference or mutate the live records',async()=>{
@@ -68,7 +70,7 @@ test('demo is self-contained and does not call inference or mutate the live reco
  assert.doesNotMatch(code,/\bfetch\s*\(|XMLHttpRequest|\/api\//);
  assert.match(code,/propertychecked-plan-library-01/);assert.match(code,/User-started hands-on timer/);
  const html=await readFile(new URL('../apps/web/public/examples/index.html',import.meta.url),'utf8');
- assert.doesNotMatch(html,/<script[^>]+src="https?:/);assert.match(html,/not ten finished surveys/);assert.match(html,/No historical hours have been invented/);
+ assert.doesNotMatch(html,/<script[^>]+src="https?:/);assert.match(html,/whole-building visual studies/i);assert.match(html,/No historical hours have been invented/);
 });
 test('real local HTTP serves the demo and correct MIME without requiring an API key',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'pc-plan-demo-'));
