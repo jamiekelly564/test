@@ -1,6 +1,6 @@
 // Only the source-attributed public demonstration files are exposed here.
 const root='apps/web/public/examples/';
-const names=['index.html','style.css','data.js','engine.js','app.js','sources.json'];
+const names=['index.html','style.css','data.js','whole-buildings.js','engine.js','app.js','sources.json'];
 const ids=['farnsworth','radlett','beverley','simon','walsh','mccraith','schmidt','cambridge','belton','lancaster'];
 export const exampleFiles=Object.freeze(Object.fromEntries([
   ['/examples/',root+'index.html'],
