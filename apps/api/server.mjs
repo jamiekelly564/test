@@ -1,3 +1,4 @@
+import { createEquipmentDemo, equipmentDemoRouter } from './management/equipment-demo.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile, mkdir, unlink, stat } from 'node:fs/promises';
 import { existsSync, createReadStream } from 'node:fs';
@@ -50,6 +51,7 @@ export function createApp(options={}){
   const workspace=openWorkspace(options.dbPath||join(dataDir,'workspace.sqlite'),assetsDir);
   const security=createSecurity({lan:!!options.lan,accessCode:options.accessCode||process.env.LOCAL_ACCESS_CODE});
   const uploadDir=join(dataDir,'uploads');
+  const equipmentDemo=equipmentDemoRouter(createEquipmentDemo({workspace,...options.equipmentDemo}),{send,jsonBody});
   const auto=createAutoService(workspace,options.auto||{});
   const evidence=createEvidenceRouter({workspace,uploadDir,send,jsonBody,readBody,...(options.evidence||{})});
   const workflow=createWorkflow({workspace,store:evidence.store,uploadDir,send,jsonBody,...(options.workflow||{})});
@@ -65,6 +67,7 @@ export function createApp(options={}){
       if(path==='/api/session'&&method==='GET')return send(req,res,200,security.session(req,res));
       if(path==='/api/session'&&method==='POST'){const b=await jsonBody(req);const s=security.authenticate(req,res,b.code);return send(req,res,200,{authenticated:true,csrf:s.csrf,mode:'trusted-lan'});}
       if(path.startsWith('/api/'))security.requireSession(req,!['GET','HEAD'].includes(method));
+      if(await equipmentDemo(req,res,path,method))return;
       if(await concierge.handle(req,res,path,method))return;
       if(await workflow.handle(req,res,path,method))return;
       if(await evidence.handle(req,res,path,method))return;
@@ -114,7 +117,7 @@ export function createApp(options={}){
         if(!workspace.manifest)throw new HttpError(404,'The private Marketfield model pack is not installed. Copy it into private-assets/marketfield.');
         if(m[1]==='viewer'){
           let html=await readFile(join(assetsDir,'marketfield','viewer.html'),'utf8');
-          html=html.replace('</head>','<link rel="stylesheet" href="/viewer-embed.css"><link rel="stylesheet" href="/viewer-interaction.css"></head>').replace('</body>','<script src="/viewer-bridge.js"></script><script type="module" src="/viewer-interaction.js"></script></body>');
+          html=html.replace('</head>','<link rel="stylesheet" href="/viewer-embed.css"><link rel="stylesheet" href="/viewer-interaction.css"><link rel="stylesheet" href="/equipment-viewer.css"></head>').replace('</body>','<script src="/viewer-bridge.js"></script><script type="module" src="/viewer-interaction.js"></script><script type="module" src="/equipment-viewer.js"></script></body>');
           res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'");
           return send(req,res,200,html,'text/html; charset=utf-8');
         }
@@ -131,6 +134,8 @@ export function createApp(options={}){
       if(evidenceStatic[path])filename=join(ROOT,evidenceStatic[path]);
       const interactionFiles={'/management-quiet.js':'apps/web/public/management/quiet.js','/management-quiet.css':'apps/web/public/management/quiet.css','/modules/management/tracking-library.mjs':'packages/management/tracking-library.mjs','/modules/viewer/surfaces.mjs':'packages/viewer/surfaces.mjs','/viewer-interaction.js':'packages/viewer/interaction.js','/viewer-interaction.css':'packages/viewer/interaction.css'};
       if(Object.hasOwn(interactionFiles,path))filename=join(ROOT,interactionFiles[path]);
+      const equipmentFiles={'/equipment-demo.js':'apps/web/public/equipment-demo/app.js','/equipment-demo.css':'apps/web/public/equipment-demo/style.css','/equipment-viewer.js':'packages/equipment-demo/viewer.js','/equipment-viewer.css':'packages/equipment-demo/viewer.css','/modules/equipment-demo/model.mjs':'packages/equipment-demo/model.mjs','/modules/equipment-demo/geometry.mjs':'packages/equipment-demo/geometry.mjs'};
+      if(Object.hasOwn(equipmentFiles,path))filename=join(ROOT,equipmentFiles[path]);
       if(path==='/viewer-bridge.js')filename=join(ROOT,'packages/viewer/bridge.js');
       if(path==='/viewer-embed.css')filename=join(ROOT,'packages/viewer/embed.css');
       if(!filename)throw new HttpError(404,'Page not found.');
