@@ -4,3 +4,17 @@ html.pc-embed .workspace{display:block!important}
 html.pc-embed .stage{background:radial-gradient(ellipse at 50% 35%,#f8faf6,#e4ece7)!important}
 html.pc-embed .loading{background:#f3f7f2!important}
 html.pc-embed #model{touch-action:none}
+/* Transient UI overlays, not replacement geometry, textures or site findings. */
+html.pc-embed #pc-management-highlights{position:absolute;inset:0;pointer-events:none;z-index:15;overflow:hidden}
+html.pc-embed .pc-marker{position:absolute;left:0;top:0;pointer-events:auto;min-width:27px;min-height:27px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;background:var(--pin-colour,#607980);border:2px solid #fff;color:white;box-shadow:0 0 0 5px color-mix(in srgb,var(--pin-colour,#607980) 16%,transparent),0 2px 9px #103b3340;font:700 10px/1.2 system-ui,sans-serif;cursor:pointer;transition:box-shadow .12s}
+html.pc-embed .pc-marker-icon{display:block;min-width:23px;text-align:center;padding:4px}
+html.pc-embed .pc-marker:hover,html.pc-embed .pc-marker:focus-visible,html.pc-embed .pc-marker.pc-selected{z-index:3;outline:2px solid #153f35;outline-offset:3px;box-shadow:0 0 0 7px color-mix(in srgb,var(--pin-colour,#607980) 25%,transparent)}
+html.pc-embed .pc-marker.pc-reference{background:#f5f9f5;color:#51675d;border:1.5px dashed #607c6d;box-shadow:0 2px 7px #264c3f30;font-size:9px;min-width:23px;min-height:23px}
+html.pc-embed .pc-marker-label{display:none;position:absolute;left:calc(100% + 9px);top:50%;transform:translateY(-50%);background:#fffffff2;border:1px solid #d6e3d8;border-left:3px solid var(--pin-colour);border-radius:5px;padding:6px 8px;color:#214637;white-space:nowrap;max-width:175px;text-overflow:ellipsis;overflow:hidden;font:500 10px/1.35 system-ui,sans-serif;box-shadow:0 2px 12px #1e463220;pointer-events:none;text-align:left}
+html.pc-embed .pc-labels .pc-marker-label,html.pc-embed .pc-marker:hover .pc-marker-label,html.pc-embed .pc-marker:focus-visible .pc-marker-label,html.pc-embed .pc-selected .pc-marker-label{display:block}
+html.pc-embed.pc-layer-dim canvas#model{opacity:.28}
+html.pc-embed.pc-layer-active #pins{display:none!important}
+html.pc-embed .pc-marker[hidden],html.pc-embed #pc-management-highlights[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){html.pc-embed .pc-marker{transition:none}}
+
+@media(max-width:600px){html.pc-embed .pc-marker{min-width:32px;min-height:32px}html.pc-embed .pc-marker.pc-reference{min-width:28px;min-height:28px}}
