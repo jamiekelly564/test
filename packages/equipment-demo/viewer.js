@@ -75,3 +75,75 @@ function install(pc){
  listen(window,'pagehide',()=>{release();viewer.visible=originalVisible;if(viewer.onPick===pick)viewer.onPick=originalPick;if(viewer.onFrame===frame)viewer.onFrame=originalFrame;root.remove();abort.abort();});
  send({type:'ready'});
 }
+
+
+// --- Marketfield RAG issue overlay v0.14 ---
+// Separate display-only layer for the populated demonstration. Coordinates come only from existing model locations.
+(function installRagOverlay(){
+ if(new URLSearchParams(location.search).get('embed')!=='1'||location.origin==='null')return;
+ let timer=setInterval(()=>{if(window.PC?.ready){clearInterval(timer);setTimeout(()=>mount(window.PC),850);}},120);
+ addEventListener('pagehide',()=>clearInterval(timer),{once:true});
+ function mount(pc){
+  if(document.getElementById('pc-rag-overlays'))return;
+  const viewer=pc.viewer,canvas=viewer.canvas,origin=location.origin,known=new Map(pc.assets.map(a=>[a.id,a])),abort=new AbortController();
+  const root=document.createElement('div');root.id='pc-rag-overlays';root.hidden=true;canvas.parentElement.append(root);
+  let enabled=false,issues=[],buttons=[],selected='';
+  const listen=(t,n,f,o={})=>t.addEventListener(n,f,{signal:abort.signal,...o});
+  const iconPaths={
+   alarm:'M4 3h16v18H4z M7 6h10v5H7z M7 15h1m3 0h1m3 0h1 M7 18h1m3 0h1m3 0h1',
+   detector:'M5 9h14l2 5-3 4H6l-3-4z M7 12h10 M8 15h8 M8 3v3m4-3v3m4-3v3',
+   callpoint:'M4 4h16v16H4z M8 8h8v8H8z M12 9v4m0 2v.1',
+   sounder:'M8 16V9a4 4 0 0 1 8 0v7 M6 16h12 M10 19h4 M3 9v5m18-5v5',
+   battery:'M3 6h16v12H3z M19 10h2v4h-2 M7 12h4m-2-2v4 M14 12h2',
+   light:'M8 15a7 7 0 1 1 8 0l-1 3H9z M9 21h6 M12 2v1',
+   emergency:'M7 12h10v8H7z M8 12l5 8m11-4 3-4 M2 4h6v5H2z M16 4h6v5h-6z',
+   exit:'M3 3h11v18H3z M10 12h12m-4-4 4 4-4 4 M6 18h1',
+   extinguisher:'M8 9h8v12H8z M10 9V5h4v4 M10 5V3h7 M16 7h3v8',
+   water:'M12 2C9 7 4 11 4 15a8 8 0 0 0 16 0c0-4-5-8-8-13z M8 15a4 4 0 0 0 4 4',
+   valve:'M3 10h18v5H3z M12 10V5 M7 5h10 M9 2v3m6-3v3',
+   fan:'M12 12c-7 2-10-3-6-7 5-4 7 0 6 7z M12 12c2-7 8-6 9-1 0 6-5 6-9 1z M12 12c5 5 2 10-3 9-5-1-4-6 3-9z',
+   electric:'M5 3h14v18H5z M13 6 8 13h4l-1 5 6-8h-5z',
+   camera:'M3 6h13v12H3z M16 10l5-3v10l-5-3 M6 9h3',
+   access:'M7 2h10v20H7z M10 6h4 M10 10h4 M10 15h1m2 0h1 M10 18h1m2 0h1',
+   lift:'M3 3h18v18H3z M8 18V8m-3 3 3-3 3 3 M16 8v10m-3-3 3 3 3-3',
+   bin:'M5 7h14l-1 14H6z M3 7h18 M9 7V3h6v4 M10 10v7m4-7v7',
+   clean:'M15 3 9 13 M7 12l7 4-3 5H3z M7 16l-2 4m5-3-1 4',
+   floor:'M3 3h18v18H3z M13 3l-4 7 6 3-4 8 M3 12h7m5 0h6',
+   paint:'M4 3h13v7H4z M17 5h4v8h-9v4 M10 17h4v5h-4z',
+   document:'M5 2h10l4 4v16H5z M15 2v5h4 M8 11h8m-8 4h8m-8 4h5',
+   seat:'M4 5h16v8H4z M3 13h18v4H3z M5 17v5m14-5v5',
+   heat:'M4 6h16v15H4z M8 9v9m4-9v9m4-9v9 M8 2v1m4-1v1m4-1v1',
+   tool:'M14 3a5 5 0 0 0-6 6L2 17l5 5 8-8a5 5 0 0 0 6-6l-5 3-3-3 3-5z'
+  };
+  function svg(key){const ns='http://www.w3.org/2000/svg',s=document.createElementNS(ns,'svg'),p=document.createElementNS(ns,'path');s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');p.setAttribute('d',iconPaths[key]||iconPaths.tool);s.append(p);return s;}
+  function rebuild(){
+   root.replaceChildren();buttons=[];if(!enabled){root.hidden=true;return;}root.hidden=false;
+   for(const item of issues){const a=known.get(item.locationId);if(!a)continue;const b=document.createElement('button');b.type='button';b.className='pc-rag-issue rag-'+item.stage+(item.id===selected?' is-selected':'');b.title=item.stageLabel+': '+item.title;b.setAttribute('aria-label',b.title);b.append(svg(item.glyph));b.onclick=e=>{e.stopPropagation();selected=item.id;focus(item,'aerial');parent.postMessage({source:'propertychecked-rag-viewer',type:'select',id:item.id},origin);rebuild();};root.append(b);buttons.push({b,item,a});}
+  }
+  function floorPoints(floor){
+   const pts=[];for(const s of pc.PLAN.shapes||[]){if(s.f!==floor||!['slab','finish'].includes(s.kind)||!Array.isArray(s.p))continue;for(const p of s.p)if(Array.isArray(p)&&p.length>=2&&p.every(Number.isFinite))pts.push(p);}
+   return pts.slice(0,20000);
+  }
+  function cameraForAerial(a){
+   const pts=floorPoints(a.floor),xs=pts.map(p=>p[0]),zs=pts.map(p=>p[1]);let cx=a.pos[0],cz=a.pos[1],span=12;
+   if(xs.length){const minX=Math.min(...xs),maxX=Math.max(...xs),minZ=Math.min(...zs),maxZ=Math.max(...zs);cx=(minX+maxX)/2;cz=(minZ+maxZ)/2;span=Math.max(10,maxX-minX,maxZ-minZ);}
+   const aspect=Math.max(.4,Math.min(3,(viewer.width||1200)/(viewer.height||800)));return {theta:0,phi:.025,radius:Math.min(180,Math.max(16,span*(aspect<1?1.45:1.05))),target:[cx,.25,cz]};
+  }
+  function cameraForEye(a){return {theta:.55,phi:1.42,radius:4.2,target:[a.pos[0],1.25,a.pos[1]]};}
+  function focus(item,requested){
+   const a=known.get(item.locationId);if(!a)return;selected=item.id;pc.setFloor(String(a.floor));pc.setMode('cutaway');
+   try{viewer.setCamera(requested==='eye'?cameraForEye(a):cameraForAerial(a));viewer.redraw=true;}
+   catch{viewer.setCamera(cameraForAerial(a));parent.postMessage({source:'propertychecked-rag-viewer',type:'camera-note',message:'Eye-level view was unavailable here, so the floor was shown from above.'},origin);}
+  }
+  listen(window,'message',e=>{
+   if(e.source!==parent||e.origin!==origin||e.data?.source!=='propertychecked-rag')return;const m=e.data;
+   if(m.command==='display'&&m.value&&typeof m.value.enabled==='boolean'){
+    enabled=m.value.enabled;issues=Array.isArray(m.value.issues)?m.value.issues.filter(x=>x&&typeof x.id==='string'&&known.has(x.locationId)&&['found','progress','working'].includes(x.stage)).slice(0,500):[];rebuild();return;
+   }
+   if(m.command==='camera'&&m.value&&typeof m.value.id==='string'&&['aerial','eye'].includes(m.value.view)){const item=issues.find(x=>x.id===m.value.id&&x.locationId===m.value.locationId);if(item)focus(item,m.value.view);}
+  });
+  const previousFrame=viewer.onFrame;
+  viewer.onFrame=function(t){previousFrame?.call(viewer,t);if(!enabled)return;const spots=[];for(const m of buttons){if(pc.state.floor!=='all'&&String(m.a.floor)!==String(pc.state.floor)){m.b.hidden=true;continue;}const off=viewer.offset({floor:m.a.floor}),q=viewer.project([m.a.pos[0],(m.a.pos[2]||1.3)+off,m.a.pos[1]]);let show=q&&[q.x,q.y,q.z].every(Number.isFinite)&&q.z>=-1&&q.z<=1&&q.x>20&&q.y>20&&q.x<viewer.width-20&&q.y<viewer.height-20;if(show&&spots.some(p=>Math.hypot(q.x-p.x,q.y-p.y)<34))show=false;m.b.hidden=!show;if(show){m.b.style.transform='translate('+q.x+'px,'+q.y+'px) translate(-50%,-50%)';spots.push(q);}}};
+  listen(window,'pagehide',()=>{viewer.onFrame=previousFrame;root.remove();abort.abort();},{once:true});
+ }
+})();

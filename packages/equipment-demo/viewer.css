@@ -2,3 +2,7 @@
 
 .pc-demo-object-outline{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.pc-demo-object-outline path{fill:#37ab8d30;stroke:#298e76;stroke-width:2;stroke-linejoin:round}.pc-demo-object-outline[hidden]{display:none}
 .pc-demo-object-hover #pc-surface-layer,.pc-demo-object-hover #pc-surface-tip{display:none!important}
+
+
+/* Marketfield RAG issue overlay v0.14 */
+#pc-rag-overlays{position:absolute;inset:0;pointer-events:none;z-index:31;overflow:hidden}#pc-rag-overlays[hidden]{display:none!important}.pc-rag-issue{position:absolute;left:0;top:0;pointer-events:auto;width:40px;height:40px;padding:8px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;border-radius:12px;color:#fff;box-shadow:0 0 0 4px #ffffff55,0 4px 14px #172b3a44;cursor:pointer}.pc-rag-issue svg{width:24px;height:24px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.pc-rag-issue.rag-found{background:#D92D20}.pc-rag-issue.rag-progress{background:#F4C430;color:#493600}.pc-rag-issue.rag-working{background:#16804A}.pc-rag-issue:hover,.pc-rag-issue:focus-visible,.pc-rag-issue.is-selected{outline:3px solid #173d46;outline-offset:4px;z-index:4}@media(max-width:600px){.pc-rag-issue{width:46px;height:46px;padding:9px;border-radius:14px}.pc-rag-issue svg{width:27px;height:27px}}
