@@ -1,3 +1,4 @@
+import { createManagement } from './management/service.mjs';
 import { exampleFiles, exampleMime } from './examples/routes.mjs';
 import { readFile } from 'node:fs/promises';
 import { loadEnvFile } from 'node:process';
@@ -11,9 +12,9 @@ import { createPreviewService } from './preview/service.mjs';
 import { createBuildingWorkspace } from './workspace/service.mjs';
 import { createPhotoFlow } from './photo-flow/service.mjs';
 const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export const VERSION='0.11.0';
+export const VERSION='0.12.0';
 const CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
-const files={...exampleFiles,'/workspace-ui.js':'apps/web/public/workspace-ui.js','/workspace.css':'apps/web/public/workspace.css','/modules/domain/tracking.mjs':'packages/domain/tracking.mjs','/admin':'apps/web/public/index.html','/photo-tools':'apps/web/public/photo-first.html','/architecture.css':'apps/web/public/architecture.css','/modules/preview/architecture.mjs':'packages/preview/architecture.mjs','/modules/preview/detailed-model.mjs':'packages/preview/detailed-model.mjs','/modules/preview/materials.mjs':'packages/preview/materials.mjs','/build':'apps/web/public/instant.html','/advanced-build':'apps/web/public/build.html','/photo-first.js':'apps/web/public/photo-first.js','/photo-first.css':'apps/web/public/photo-first.css','/modules/preview/concept.mjs':'packages/preview/concept.mjs','/':'apps/web/public/instant.html','/index.html':'apps/web/public/instant.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
+const files={'/marketfield':'apps/web/public/management/index.html','/marketfield/':'apps/web/public/management/index.html','/management.js':'apps/web/public/management/app.js','/management.css':'apps/web/public/management/style.css','/modules/management/catalog.mjs':'packages/management/catalog.mjs',...exampleFiles,'/workspace-ui.js':'apps/web/public/workspace-ui.js','/workspace.css':'apps/web/public/workspace.css','/modules/domain/tracking.mjs':'packages/domain/tracking.mjs','/admin':'apps/web/public/index.html','/photo-tools':'apps/web/public/photo-first.html','/architecture.css':'apps/web/public/architecture.css','/modules/preview/architecture.mjs':'packages/preview/architecture.mjs','/modules/preview/detailed-model.mjs':'packages/preview/detailed-model.mjs','/modules/preview/materials.mjs':'packages/preview/materials.mjs','/build':'apps/web/public/instant.html','/advanced-build':'apps/web/public/build.html','/photo-first.js':'apps/web/public/photo-first.js','/photo-first.css':'apps/web/public/photo-first.css','/modules/preview/concept.mjs':'packages/preview/concept.mjs','/':'apps/web/public/instant.html','/index.html':'apps/web/public/instant.html','/preview-workspace.js':'apps/web/public/preview-workspace.js','/start':'apps/web/public/instant.html','/instant':'apps/web/public/instant.html','/instant.js':'apps/web/public/instant.js','/instant.css':'apps/web/public/instant.css','/modules/preview/model.mjs':'packages/preview/model.mjs','/modules/preview/viewer.mjs':'packages/preview/viewer.mjs','/modules/preview/ux.mjs':'packages/preview/ux.mjs','/modules/preview/map-shape.mjs':'packages/preview/map-shape.mjs',
   '/modules/auto-model/geometry.mjs':'packages/auto-model/geometry.mjs','/modules/auto-model/viewer.mjs':'packages/auto-model/viewer.mjs'};
 const send=(req,res,status,value,type='application/json; charset=utf-8')=>{const bytes=Buffer.isBuffer(value)?value:Buffer.from(typeof value==='string'?value:JSON.stringify(value));res.writeHead(status,{'Content-Type':type,'Content-Length':bytes.length});res.end(req.method==='HEAD'?undefined:bytes);};
 async function jsonBody(req){
@@ -25,16 +26,30 @@ async function jsonBody(req){
 export function createPreviewApp(options={}){
   const app=createApp(options),preview=createPreviewService({workspace:app.workspace,...options.preview}),old=app.server.listeners('request');
   const photoFlow=createPhotoFlow({workspace:app.workspace,preview,uploadDir:join(resolve(options.dataDir||process.env.PROPERTYCHECKED_DATA_DIR||join(ROOT,'.data')),'uploads'),...options.photoFlow});
+  const management=createManagement({workspace:app.workspace,...options.management});
   const buildingWorkspace=createBuildingWorkspace({workspace:app.workspace,preview});
   app.server.removeAllListeners('request');
   app.server.on('request',async(req,res)=>{
-    const path=String(req.url||'').split('?')[0],ours=path==='/examples'||!!files[path]||path.startsWith('/api/previews')||path.startsWith('/api/photo-flow')||path.startsWith('/api/workspace')||path==='/api/status';
+    const path=String(req.url||'').split('?')[0],ours=path==='/examples'||!!files[path]||path.startsWith('/api/previews')||path.startsWith('/api/photo-flow')||path.startsWith('/api/management')||path.startsWith('/api/workspace')||path==='/api/status';
     if(!ours){for(const listener of old)listener.call(app.server,req,res);return;}
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Content-Security-Policy',CSP);res.setHeader('Cross-Origin-Resource-Policy','same-origin');
     try{
       app.security.checkHost(req);const method=req.method;
       if(path==='/examples'&&['GET','HEAD'].includes(method)){res.writeHead(302,{Location:'/examples/'});res.end();return;}
       if(path.startsWith('/api/'))app.security.requireSession(req,!['GET','HEAD'].includes(method));
+      if(path==='/api/management/catalog'&&method==='GET'){send(req,res,200,management.catalog());return;}
+      if(path==='/api/management/bootstrap'&&method==='GET'){send(req,res,200,management.bootstrap());return;}
+      if(path==='/api/management/open'&&method==='POST'){await jsonBody(req);send(req,res,200,management.open());return;}
+      const mg=/^\/api\/management\/buildings\/([a-zA-Z0-9-]+)(?:\/(records|export)(?:\/([a-zA-Z0-9-]+)(?:\/(history|action|check))?)?)?$/.exec(path);
+      if(mg){const [,bid,part,id,action]=mg;
+        if(!part&&method==='GET'){send(req,res,200,management.snapshot(bid));return;}
+        if(part==='export'&&method==='GET'){res.setHeader('Content-Disposition','attachment; filename="marketfield-management-records.json"');send(req,res,200,management.export(bid));return;}
+        if(part==='records'&&!id&&method==='POST'){send(req,res,201,management.add(bid,await jsonBody(req)));return;}
+        if(part==='records'&&id&&!action&&method==='GET'){send(req,res,200,management.read(bid,id));return;}
+        if(part==='records'&&id&&!action&&method==='PATCH'){send(req,res,200,management.update(bid,id,await jsonBody(req)));return;}
+        if(part==='records'&&id&&action==='history'&&method==='GET'){send(req,res,200,management.history(bid,id));return;}
+        if(part==='records'&&id&&['check','action'].includes(action)&&method==='POST'){send(req,res,200,management[action](bid,id,await jsonBody(req)));return;}
+      }
       if(path==='/api/workspace/start'&&method==='POST'){send(req,res,200,buildingWorkspace.start(await jsonBody(req)));return;}
       if(path==='/api/workspace/buildings'&&method==='GET'){send(req,res,200,buildingWorkspace.list());return;}
       const recover=/^\/api\/workspace\/requests\/([a-zA-Z0-9-]+)$/.exec(path);
@@ -81,7 +96,7 @@ export function createPreviewApp(options={}){
       throw new HttpError(404,'Preview route not found.');
     }catch(e){if(!res.headersSent)send(req,res,e instanceof HttpError?e.status:500,{error:e instanceof HttpError?e.message:'Preview request failed safely. Your saved model is unchanged.'});else res.destroy();}
   });
-  return {...app,preview,photoFlow,buildingWorkspace,close:async()=>{await photoFlow.close();await preview.close();await app.close();}};
+  return {...app,preview,photoFlow,buildingWorkspace,management,close:async()=>{await photoFlow.close();await preview.close();await app.close();}};
 }
 async function run(){
   try{loadEnvFile(join(ROOT,'.env'));}catch(e){if(e.code!=='ENOENT')throw new Error('Could not load the project .env file.');}
@@ -91,8 +106,8 @@ async function run(){
   await new Promise((resolve,reject)=>{const probe=createProbe();probe.once('error',()=>reject(new Error(`Port ${port} is already in use. Stop the other PropertyChecked terminal with Ctrl+C before starting this version.`)));probe.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>probe.close(resolve));});
   const app=createPreviewApp({lan});app.server.on('error',()=>{console.error('The local server could not start. Check the selected port.');app.close().finally(()=>process.exit(1));});
   app.server.listen(port,lan?'0.0.0.0':'127.0.0.1',()=>{
-    console.log(`\nPropertyChecked ${VERSION} - one building workspace\nOpen http://localhost:${port}/start\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\nAI research: ${process.env.OPENAI_API_KEY?'key configured (access not yet verified)':'not configured; open map estimates still work'}\nOpen map data: ${process.env.MAP_DATA_ENABLED==='false'?'disabled':'enabled (downloads run only after creation/refinement)'}\n`);
-    if(lan){console.log('Trusted Wi-Fi only. Access code: '+app.security.code);for(const ip of app.security.allowedHosts)if(!['localhost','127.0.0.1','[::1]'].includes(ip))console.log(`Phone: http://${ip}:${port}/start`);}
+    console.log(`\nPropertyChecked ${VERSION} - one building workspace\nOpen http://localhost:${port}/marketfield\nDatabase: ${process.env.PROPERTYCHECKED_DATA_DIR||'.data'}/workspace.sqlite\nAI research: ${process.env.OPENAI_API_KEY?'key configured (access not yet verified)':'not configured; open map estimates still work'}\nOpen map data: ${process.env.MAP_DATA_ENABLED==='false'?'disabled':'enabled (downloads run only after creation/refinement)'}\n`);
+    if(lan){console.log('Trusted Wi-Fi only. Access code: '+app.security.code);for(const ip of app.security.allowedHosts)if(!['localhost','127.0.0.1','[::1]'].includes(ip))console.log(`Phone: http://${ip}:${port}/marketfield`);}
     console.log('Estimates are not surveys. No paid request runs until a preview/refinement is requested.');
   });
   let closing=false;const stop=()=>{if(closing)return;closing=true;app.close().then(()=>process.exit(0));};process.on('SIGINT',stop);process.on('SIGTERM',stop);

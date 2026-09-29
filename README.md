@@ -1,6 +1,10 @@
-# PropertyChecked 0.11.0
+# PropertyChecked 0.12.0
 
 Local postcode-first building-management workspace with 3D estimates and a separate evidence-based reconstruction workflow. Models are interactive geometry, not generated pictures. They are not surveys or automated fire-safety assessments.
+
+## Marketfield management
+
+Open **http://localhost:3000/marketfield** for the recovered building's model-linked management workspace. Assets, work orders, recurring checks, documents, costs/contracts, responsibilities, incidents and anonymised engagement cases are saved in the local SQLite database. Completion evidence acceptance and access attempts are separate from inspection claims. The private Marketfield recovery pack is required for its existing geometry. No API key or paid AI is needed. See [implemented features, boundaries and tests](docs/MARKETFIELD-MANAGEMENT.md).
 
 ## Ten-property plan library
 
