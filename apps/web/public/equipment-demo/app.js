@@ -89,3 +89,112 @@ window.addEventListener('message',e=>{
 },true);
 window.addEventListener('pagehide',()=>clearInterval(state.poll),{once:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+
+
+// --- Marketfield RAG navigation v0.14 ---
+// Visual three-stage interpretation for the explicitly fictional populated demo only.
+// Persisted workflow values remain the existing demo values; this does not write real inspection results.
+const ragStageFor=r=>{
+ if(r?.kind!=='issue')return {key:'unknown',label:'Condition not recorded',colour:'#667085',rank:0};
+ if(r.status==='open')return {key:'found',label:'Issue found',colour:'#D92D20',rank:3};
+ if(r.status==='in_progress'||r.status==='awaiting_review')return {key:'progress',label:'In progress',colour:'#F4C430',rank:2};
+ if(r.status==='resolved')return {key:'working',label:'Working correctly',colour:'#16804A',rank:1};
+ return {key:'unknown',label:'Condition not recorded',colour:'#667085',rank:0};
+};
+const ragGlyphFor=(r,asset)=>{
+ const t=String(r?.title||'').toLowerCase(), style=asset?.style||'';
+ if(/leak|flood/.test(t))return 'water'; if(/battery/.test(t))return 'battery';
+ if(/floor finish|flooring|trip/.test(t))return 'floor'; if(/decorat|paint/.test(t))return 'paint';
+ if(/cleaning|housekeeping/.test(t))return 'clean'; if(/collection|waste|refuse|bin/.test(t))return 'bin';
+ return ({'alarm-panel':'alarm','smoke-detector':'detector','heat-detector':'detector','call-point':'callpoint',sounder:'sounder',extinguisher:'extinguisher','riser-outlet':'valve','emergency-light':'light','exit-sign':'exit','smoke-vent':'fan',light:'light','electrical-board':'electric',meter:'electric',battery:'battery',intercom:'access',cctv:'camera','access-reader':'access','lift-controller':'lift',pump:'water',tank:'water',valve:'valve','leak-sensor':'water',boiler:'heat',fan:'fan',radiator:'heat',bin:'bin',recycling:'bin',bench:'seat','information-box':'document','ev-charger':'electric'}[style]||'tool');
+};
+const ragIconPaths=Object.freeze({
+ alarm:'M4 3h16v18H4z M7 6h10v5H7z M7 15h1m3 0h1m3 0h1 M7 18h1m3 0h1m3 0h1',
+ detector:'M5 9h14l2 5-3 4H6l-3-4z M7 12h10 M8 15h8 M8 3v3m4-3v3m4-3v3',
+ callpoint:'M4 4h16v16H4z M8 8h8v8H8z M12 9v4m0 2v.1',
+ sounder:'M8 16V9a4 4 0 0 1 8 0v7 M6 16h12 M10 19h4 M3 9v5m18-5v5',
+ battery:'M3 6h16v12H3z M19 10h2v4h-2 M7 12h4m-2-2v4 M14 12h2',
+ light:'M8 15a7 7 0 1 1 8 0l-1 3H9z M9 21h6 M12 2v1',
+ emergency:'M7 12h10v8H7z M8 12l5 8m11-4 3-4 M2 4h6v5H2z M16 4h6v5h-6z',
+ exit:'M3 3h11v18H3z M10 12h12m-4-4 4 4-4 4 M6 18h1',
+ extinguisher:'M8 9h8v12H8z M10 9V5h4v4 M10 5V3h7 M16 7h3v8',
+ water:'M12 2C9 7 4 11 4 15a8 8 0 0 0 16 0c0-4-5-8-8-13z M8 15a4 4 0 0 0 4 4',
+ valve:'M3 10h18v5H3z M12 10V5 M7 5h10 M9 2v3m6-3v3',
+ fan:'M12 12c-7 2-10-3-6-7 5-4 7 0 6 7z M12 12c2-7 8-6 9-1 0 6-5 6-9 1z M12 12c5 5 2 10-3 9-5-1-4-6 3-9z',
+ electric:'M5 3h14v18H5z M13 6 8 13h4l-1 5 6-8h-5z',
+ camera:'M3 6h13v12H3z M16 10l5-3v10l-5-3 M6 9h3',
+ access:'M7 2h10v20H7z M10 6h4 M10 10h4 M10 15h1m2 0h1 M10 18h1m2 0h1',
+ lift:'M3 3h18v18H3z M8 18V8m-3 3 3-3 3 3 M16 8v10m-3-3 3 3 3-3',
+ bin:'M5 7h14l-1 14H6z M3 7h18 M9 7V3h6v4 M10 10v7m4-7v7',
+ clean:'M15 3 9 13 M7 12l7 4-3 5H3z M7 16l-2 4m5-3-1 4',
+ floor:'M3 3h18v18H3z M13 3l-4 7 6 3-4 8 M3 12h7m5 0h6',
+ paint:'M4 3h13v7H4z M17 5h4v8h-9v4 M10 17h4v5h-4z',
+ document:'M5 2h10l4 4v16H5z M15 2v5h4 M8 11h8m-8 4h8m-8 4h5',
+ seat:'M4 5h16v8H4z M3 13h18v4H3z M5 17v5m14-5v5',
+ heat:'M4 6h16v15H4z M8 9v9m4-9v9m4-9v9 M8 2v1m4-1v1m4-1v1',
+ tool:'M14 3a5 5 0 0 0-6 6L2 17l5 5 8-8a5 5 0 0 0 6-6l-5 3-3-3 3-5z'
+});
+const ragIconSvg=key=>'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(ragIconPaths[key]||ragIconPaths.tool)+'"/></svg>';
+let ragOnly='',ragShowGreen=true,ragSelected='';
+const ragShell=()=>document.getElementById('equipment-demo-ui');
+function ragEnsureUi(){
+ const shell=ragShell(); if(!shell||document.getElementById('demo-rag-summary'))return;
+ const tools=shell.querySelector('.equipment-demo-tools'), marker=tools?.querySelector('#demo-placement');
+ if(tools){
+  const block=document.createElement('div');block.id='demo-rag-summary';block.innerHTML='<p class="demo-note"><strong>Issue status</strong><br>Red = issue found · Yellow = in progress · Green = working correctly.</p><div class="demo-status-summary"><button type="button" data-rag="found"><strong>0</strong><span>Issue found</span></button><button type="button" data-rag="progress"><strong>0</strong><span>In progress</span></button><button type="button" data-rag="working"><strong>0</strong><span>Working correctly</span></button></div><label class="demo-check"><input type="checkbox" id="demo-show-green" checked> Show green / working outcomes</label><button type="button" class="plain" id="demo-rag-clear">Show all statuses</button>';
+  marker?.after(block);
+  block.onclick=e=>{const b=e.target.closest('[data-rag]');if(b){ragOnly=ragOnly===b.dataset.rag?'':b.dataset.rag;ragSync(true);} if(e.target.closest('#demo-rag-clear')){ragOnly='';ragSync(true);}};
+  block.querySelector('#demo-show-green').onchange=e=>{ragShowGreen=e.target.checked;ragSync(true);};
+ }
+ const card=document.createElement('aside');card.id='demo-focus-card';card.className='demo-focus-card';card.hidden=true;
+ card.innerHTML='<button class="plain demo-focus-close" type="button" aria-label="Close selected issue">×</button><p class="eyebrow">SELECTED ISSUE</p><div class="demo-focus-heading"><span class="demo-row-icon" id="demo-focus-icon"></span><div><h2 id="demo-focus-title"></h2><span id="demo-focus-stage" class="demo-rag-badge"></span></div></div><p id="demo-focus-location" class="demo-focus-location"></p><div class="demo-view-buttons"><button type="button" data-view="aerial">Aerial floor</button><button type="button" data-view="eye">Eye-level</button><button type="button" id="demo-focus-open">Open record</button></div>';
+ shell.append(card);
+ card.querySelector('.demo-focus-close').onclick=()=>{ragSelected='';card.hidden=true;ragSync(true);};
+ card.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>ragCamera(b.dataset.view));
+ card.querySelector('#demo-focus-open').onclick=()=>{const r=state.data?.records.find(x=>x.id===ragSelected);if(r)details(r.id);};
+}
+function ragIssues(){
+ if(!state.active||!state.data)return [];
+ const assets=new Map(state.data.records.filter(r=>r.kind==='equipment').map(r=>[r.id,r]));
+ return state.data.records.filter(r=>r.kind==='issue').map(r=>{
+  const stage=ragStageFor(r),asset=assets.get(r.assetId);
+  return {id:r.id,title:r.title,status:r.status,stage:stage.key,stageLabel:stage.label,colour:stage.colour,locationId:r.locationId,assetId:r.assetId||'',style:asset?.style||'',glyph:ragGlyphFor(r,asset),category:r.category||'other'};
+ }).filter(r=>(ragShowGreen||r.stage!=='working')&&(!ragOnly||r.stage===ragOnly)&&(!state.category||r.category===state.category));
+}
+function ragSync(force=false){
+ if(!state.active||!state.data||!state.ready)return;
+ ragEnsureUi();
+ const issues=ragIssues(), counts={found:0,progress:0,working:0};issues.forEach(r=>{if(counts[r.stage]!==undefined)counts[r.stage]++;});
+ document.querySelectorAll('#demo-rag-summary [data-rag]').forEach(b=>{b.querySelector('strong').textContent=String(counts[b.dataset.rag]||0);b.setAttribute('aria-pressed',String(ragOnly===b.dataset.rag));b.className='rag-'+b.dataset.rag;});
+ const sig=JSON.stringify([state.data.version,state.category,state.floor,ragOnly,ragShowGreen,state.markers,issues.map(r=>[r.id,r.status])]);
+ if(!force&&ragSync.last===sig)return;ragSync.last=sig;
+ frame()?.contentWindow?.postMessage({source:'propertychecked-rag',command:'display',value:{enabled:state.markers!==false,issues}},location.origin);
+ if(ragSelected&&!issues.some(r=>r.id===ragSelected)&&!state.data.records.some(r=>r.id===ragSelected)){ragSelected='';const c=document.getElementById('demo-focus-card');if(c)c.hidden=true;}
+}
+function ragSelect(id){
+ const r=state.data?.records.find(x=>x.id===id&&x.kind==='issue');if(!r)return;
+ ragSelected=id; locate(id); ragEnsureUi();
+ const asset=state.data.records.find(x=>x.id===r.assetId),stage=ragStageFor(r),loc=state.data.locations.find(l=>l.id===r.locationId),card=document.getElementById('demo-focus-card');
+ card.hidden=false;card.querySelector('#demo-focus-title').textContent=r.title;card.querySelector('#demo-focus-location').textContent=loc?loc.floor_key+' / '+loc.title:'Building-wide / position unconfirmed';
+ const icon=card.querySelector('#demo-focus-icon');icon.className='demo-row-icon rag-'+stage.key;icon.innerHTML=ragIconSvg(ragGlyphFor(r,asset));
+ const badge=card.querySelector('#demo-focus-stage');badge.className='demo-rag-badge rag-'+stage.key;badge.textContent=stage.label;
+ card.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed','false'));
+}
+function ragCamera(view){
+ const r=state.data?.records.find(x=>x.id===ragSelected),loc=r&&state.data.locations.find(l=>l.id===r.locationId);if(!r||!loc)return message('This issue has no model location to focus.');
+ const floor=state.data.floors.find(f=>f.key===loc.floor_key);if(floor)sendFloor(String(floor.id));
+ frame()?.contentWindow?.postMessage({source:'propertychecked-rag',command:'camera',value:{id:r.id,locationId:r.locationId,view}},location.origin);
+ document.querySelectorAll('#demo-focus-card [data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+}
+function ragDecorateList(){
+ if(!state.active||!state.data)return;const assets=new Map(state.data.records.filter(r=>r.kind==='equipment').map(r=>[r.id,r]));
+ document.querySelectorAll('#demo-list [data-demo-id]').forEach(b=>{const r=state.data.records.find(x=>x.id===b.dataset.demoId);if(!r||b.dataset.ragDecorated===String(state.data.version))return;
+  b.dataset.ragDecorated=String(state.data.version);const stage=r.kind==='issue'?ragStageFor(r):null;if(stage){b.classList.remove('demo-record-issue');b.classList.add('rag-'+stage.key);}
+  if(!b.querySelector('.demo-row-icon')){const icon=document.createElement('span');icon.className='demo-row-icon'+(stage?' rag-'+stage.key:'');icon.innerHTML=ragIconSvg(ragGlyphFor(r,assets.get(r.assetId)||r));b.prepend(icon);}
+  if(stage){const text=b.querySelector('small');if(text){text.textContent=stage.label+' / '+titleCategory(r.category);}}
+ });
+}
+const ragObserver=new MutationObserver(()=>{ragEnsureUi();ragDecorateList();const sel=document.getElementById('demo-sim-status');if(sel&&!sel.dataset.rag){sel.dataset.rag='1';const current=sel.value==='awaiting_review'?'in_progress':sel.value;sel.innerHTML='<option value="open">Red — Issue found</option><option value="in_progress">Yellow — In progress</option><option value="resolved">Green — Working correctly</option>';sel.value=['open','in_progress','resolved'].includes(current)?current:'open';}});
+ragObserver.observe(document.documentElement,{subtree:true,childList:true});
+setInterval(()=>{if(state.active){ragEnsureUi();ragDecorateList();ragSync();}},500);
+window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==frame()?.contentWindow)return;const m=e.data;if(state.active&&m?.source==='propertychecked-rag-viewer'&&m.type==='select'&&typeof m.id==='string')ragSelect(m.id);if(state.active&&m?.source==='propertychecked-rag-viewer'&&m.type==='camera-note'&&typeof m.message==='string')message(m.message);},true);
