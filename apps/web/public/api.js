@@ -12,3 +12,8 @@ export async function api(path,options={}){
 }
 export const json=(method,body)=>({method,body:JSON.stringify(body)});
 export function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// Load the opt-in demonstration only on Marketfield. Real pages retain their existing API.
+if(typeof window!=='undefined' && /^\/marketfield\/?$/.test(location.pathname)) {
+  import('/equipment-demo.js').catch(()=>console.warn('The optional equipment demonstration did not load. Real records remain available.'));
+}
