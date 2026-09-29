@@ -114,7 +114,7 @@ export function createApp(options={}){
         if(!workspace.manifest)throw new HttpError(404,'The private Marketfield model pack is not installed. Copy it into private-assets/marketfield.');
         if(m[1]==='viewer'){
           let html=await readFile(join(assetsDir,'marketfield','viewer.html'),'utf8');
-          html=html.replace('</head>','<link rel="stylesheet" href="/viewer-embed.css"></head>').replace('</body>','<script src="/viewer-bridge.js"></script></body>');
+          html=html.replace('</head>','<link rel="stylesheet" href="/viewer-embed.css"><link rel="stylesheet" href="/viewer-interaction.css"></head>').replace('</body>','<script src="/viewer-bridge.js"></script><script type="module" src="/viewer-interaction.js"></script></body>');
           res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'");
           return send(req,res,200,html,'text/html; charset=utf-8');
         }
@@ -129,6 +129,8 @@ export function createApp(options={}){
       if(autoStatic[path])filename=join(ROOT,autoStatic[path]);
       const evidenceStatic={'/modules/evidence/graph.mjs':'packages/evidence/graph.mjs','/modules/evidence/viewer.mjs':'packages/evidence/viewer.mjs','/modules/auto-model/geometry.mjs':'packages/auto-model/geometry.mjs','/modules/auto-model/viewer.mjs':'packages/auto-model/viewer.mjs'};
       if(evidenceStatic[path])filename=join(ROOT,evidenceStatic[path]);
+      const interactionFiles={'/management-quiet.js':'apps/web/public/management/quiet.js','/management-quiet.css':'apps/web/public/management/quiet.css','/modules/management/tracking-library.mjs':'packages/management/tracking-library.mjs','/modules/viewer/surfaces.mjs':'packages/viewer/surfaces.mjs','/viewer-interaction.js':'packages/viewer/interaction.js','/viewer-interaction.css':'packages/viewer/interaction.css'};
+      if(Object.hasOwn(interactionFiles,path))filename=join(ROOT,interactionFiles[path]);
       if(path==='/viewer-bridge.js')filename=join(ROOT,'packages/viewer/bridge.js');
       if(path==='/viewer-embed.css')filename=join(ROOT,'packages/viewer/embed.css');
       if(!filename)throw new HttpError(404,'Page not found.');
