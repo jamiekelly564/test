@@ -18,3 +18,5 @@ html.pc-embed .pc-marker[hidden],html.pc-embed #pc-management-highlights[hidden]
 @media(prefers-reduced-motion:reduce){html.pc-embed .pc-marker{transition:none}}
 
 @media(max-width:600px){html.pc-embed .pc-marker{min-width:32px;min-height:32px}html.pc-embed .pc-marker.pc-reference{min-width:28px;min-height:28px}}
+
+html.pc-embed #cutControls{display:none!important}

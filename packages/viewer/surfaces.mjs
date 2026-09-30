@@ -1,5 +1,5 @@
 /** Read-only model interaction: no records, inferred equipment or source geometry writes. */
-const EPS=1e-8;
+const EPS=1e-8,compiledCache=new WeakMap();
 export function pointInRing(p,r){let b=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],z=r[j];if((a[1]>p[1])!==(z[1]>p[1])&&p[0]<(z[0]-a[0])*(p[1]-a[1])/(z[1]-a[1])+a[0])b=!b;}return b;}
 export const inRings=(p,rings)=>!!rings.length&&pointInRing(p,rings[0])&&!rings.slice(1).some(r=>pointInRing(p,r));
 const area=r=>Math.abs(r.reduce((s,a,i)=>{const b=r[(i+1)%r.length];return s+a[0]*b[1]-b[0]*a[1];},0)/2);
@@ -22,7 +22,7 @@ export function createSurfacePicker(groups){
   }return result;
  };
 }
-function distanceToSegment(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1)));return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);}
+export function distanceToSegment(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy||1)));return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy);}
 function segmentRing(s){const dx=s.b[0]-s.a[0],dz=s.b[1]-s.a[1],len=Math.hypot(dx,dz)||1,w=Math.max(.06,s.w||.12)/2,n=[-dz/len*w,dx/len*w];return [[s.a[0]+n[0],s.a[1]+n[1]],[s.b[0]+n[0],s.b[1]+n[1]],[s.b[0]-n[0],s.b[1]-n[1]],[s.a[0]-n[0],s.a[1]-n[1]]];}
 function objectRing(o){const c=Math.cos(o.rot*Math.PI/180),s=Math.sin(o.rot*Math.PI/180);return [[-o.w/2,-o.d/2],[o.w/2,-o.d/2],[o.w/2,o.d/2],[-o.w/2,o.d/2]].map(([x,z])=>[o.p[0]+x*c-z*s,o.p[1]+x*s+z*c]);}
 /** Raster segmentation uses existing wall/door segments as closed boundaries.
@@ -53,6 +53,7 @@ export function partitionFloor(plan,floor,step=.20){
  return {grid,w,h,x,z,step,seed,components,outlines,contains:(id,p)=>{const i=Math.floor((p[0]-x)/step),j=Math.floor((p[1]-z)/step);return i>=0&&i<w&&j>=0&&j<h&&grid[j*w+i]===id;}};
 }
 export function compileSurfaces(plan){
+ if(compiledCache.has(plan))return compiledCache.get(plan);
  const result=[],byId=new Map(),floors=new Map(plan.floors.map(f=>[f.id,f])),grids=new Map();
  const all=plan.assets.filter(a=>a.type!=='void');
  const add=(a,shape)=>{const s={id:a.id,title:a.title,type:a.type,floor:a.floor,source:a.source,basis:a.basis||'drawing-derived',anchor:[...a.pos],...shape};result.push(s);byId.set(a.id,s);};
@@ -82,7 +83,7 @@ export function compileSurfaces(plan){
   if(region.size<.25||region.size>300||peers.length>4)continue;
   add(a,{polygons:region.strips.map(r=>[r]),lines:region.edgeSegments,y:floor.y+.06,top:floor.y+.06,sharedIds:peers.length>1?peers.map(b=>b.id):[],sharedTitles:peers.length>1?peers.map(b=>b.title):[],boundaryBasis:peers.length>1?'Shared model region; separate area boundary is not resolved':'Approximate region from existing model partitions (0.20 m display grid)',contains:p=>grid.contains(id,p)});
  }
- return {surfaces:result,byId,unbounded:all.filter(a=>!byId.has(a.id)).map(a=>a.id)};
+ const out={surfaces:result,byId,unbounded:all.filter(a=>!byId.has(a.id)).map(a=>a.id)};compiledCache.set(plan,out);return out;
 }
 export function resolveSurfaceHit(compiled,hit){
  if(!hit||hit.group.floor<0)return null;const p=[hit.point[0],hit.point[2]],kind=hit.group.kind;
@@ -93,3 +94,50 @@ export function resolveSurfaceHit(compiled,hit){
  if(['facade','roof','roof-parapet','balcony-rail','void-line'].includes(kind))return null;
  return surfaces.filter(s=>!['door','window'].includes(s.type)).sort((a,b)=>(a.type==='space'?0:1)-(b.type==='space'?0:1))[0]||null;
 }
+
+// Display policy is not source geometry or resident-data access control.
+export const exteriorKinds=new Set(['facade','window','window-frame','balcony-rail','roof','roof-parapet']);
+const interiors=new Set(['partition','internal-door','furniture','finish']);
+export function residenceRegions(plan,compiled=compileSurfaces(plan)){
+ const privateByFloor=new Map(),sharedByFloor=new Map();
+ const put=(map,f,fn)=>{if(!map.has(f))map.set(f,[]);map.get(f).push(fn);};
+ for(const s of plan.shapes)if(/apartment/i.test(s.name||'')&&['finish','slab'].includes(s.kind))put(privateByFloor,s.f,p=>inRings(p,[s.p,...(s.holes||[])]));
+ for(const s of compiled.surfaces){if(s.type!=='space'||s.sharedIds?.length)continue;const priv=/apartment|bedroom|living\s*\/\s*kitchen|private|\bflat\b/i.test(s.title);put(priv?privateByFloor:sharedByFloor,s.floor,s.contains);}
+ return {contains:(floor,p)=>(privateByFloor.get(floor)||[]).some(fn=>fn(p))&&!(sharedByFloor.get(floor)||[]).some(fn=>fn(p))};
+}
+export function prepareDisplayGroups(plan,groups){
+ const regions=residenceRegions(plan),out=[],seen=new Set(),audit={inputTriangles:0,outputTriangles:0,duplicates:0,degenerate:0,privateTriangles:0,unboundedAreas:compileSurfaces(plan).unbounded.length};
+ for(const g of [...groups].sort((a,b)=>(a.basis==='estimated')-(b.basis==='estimated'))){
+  const raw=g.vertices||g.data||[],bins={shared:[],private:[]};
+  for(let i=0;i+29<raw.length;i+=30){audit.inputTriangles++;const pts=[0,10,20].map(k=>[raw[i+k],raw[i+k+1],raw[i+k+2]]),n=cross(sub(pts[1],pts[0]),sub(pts[2],pts[0]));
+   if(!pts.flat().every(Number.isFinite)||Math.hypot(...n)<1e-9){audit.degenerate++;continue;}
+   const key=g.floor+'|'+g.kind+'|'+pts.map(p=>p.map(v=>v.toFixed(5)).join(',')).sort().join('|')+'|'+Array.from(raw.slice(i+3,i+10)).map(v=>v.toFixed(4)).join(',');
+   if(seen.has(key)){audit.duplicates++;continue;}seen.add(key);
+   const center=[0,2].map(j=>(pts[0][j]+pts[1][j]+pts[2][j])/3);let priv=interiors.has(g.kind)&&regions.contains(g.floor,center);
+   // Keep the shared/private boundary wall: both sides must be private before hiding it.
+   if(priv&&g.kind==='partition')priv=[-1,1].every(sign=>regions.contains(g.floor,[center[0]+sign*raw[i+3]*.22,center[1]+sign*raw[i+5]*.22]));
+   const bin=priv?bins.private:bins.shared;for(let k=0;k<30;k++)bin.push(raw[i+k]);audit.outputTriangles++;if(priv)audit.privateTriangles++;
+  }
+  for(const [zone,data] of Object.entries(bins))if(data.length){const vertices=new Float32Array(data);out.push({...g,name:g.name+(zone==='private'?' / private interior':''),zone,vertices,data:vertices,count:vertices.length/10,vao:null,buffer:null});}
+ }
+ return {groups:out,audit,regions};
+}
+export function modelGroupVisible(g,state,settings){
+ if(g.kind==='site')return state.floor==='all'&&!state.plan;
+ if(state.floor!=='all'&&String(g.floor)!==String(state.floor))return false;
+ if(settings.residences===false&&g.zone==='private')return false;
+ if(state.furniture===false&&g.kind==='furniture')return false;
+ if(state.plan&&['slab','finish','balcony','core-floor'].includes(g.kind))return false;
+ if(['roof','roof-parapet'].includes(g.kind)&&(state.floor!=='all'||state.mode==='cutaway'))return false;
+ return !(exteriorKinds.has(g.kind)&&settings.exterior==='hidden');
+}
+export function appearanceSettings(previous,value){
+ if(!value||typeof value!=='object')return {...previous};
+ return {...previous,...(['solid','ghost','hidden'].includes(value.exterior)?{exterior:value.exterior}:{}),...(Number.isFinite(value.opacity)&&value.opacity>=.05&&value.opacity<=.7?{opacity:value.opacity}:{}),...(typeof value.residences==='boolean'?{residences:value.residences}:{})};
+}
+// All runtime positions are [x,height,z]; 2D drawing points are converted only once at import.
+export function displayPoint(viewer,floor,anchor){
+ if(!Array.isArray(anchor)||anchor.length!==3||!anchor.every(Number.isFinite))return null;
+ return [anchor[0],anchor[1]+viewer.offset({floor}),anchor[2]];
+}
+export function viewStamp(viewer,state){const c=viewer.current;return [state.floor,state.mode,state.plan,state.basis,viewer.width,viewer.height,viewer.explode?.toFixed(4),c.theta.toFixed(4),c.phi.toFixed(4),c.radius.toFixed(3),...c.target.map(n=>n.toFixed(3))].join('|');}
