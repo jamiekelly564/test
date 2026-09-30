@@ -1,10 +1,12 @@
 import { typeById } from './model.mjs';
+const meshCache=new Map();
 const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
 const sub=(a,b)=>a.map((v,i)=>v-b[i]);
 const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 /** Vertex stride matches the preserved renderer. The returned mesh is separate from PLAN. */
 export function equipmentMesh(style){
  if(!typeById.has(style))throw Error('Unknown illustrative equipment style.');
+ if(meshCache.has(style))return meshCache.get(style).slice();
  const data=[];
  const tri=(a,b,c,colour)=>{let n=cross(sub(b,a),sub(c,a)),l=Math.hypot(...n);if(l<1e-10)return;n=n.map(x=>x/l);for(const p of [a,b,c])data.push(...p,...n,...rgb(colour),0);};
  const quad=(a,b,c,d,col)=>{tri(a,b,c,col);tri(a,c,d,col);};
@@ -54,49 +56,80 @@ export function equipmentMesh(style){
  case 'information-box': box(0,.28,0,.52,.56,.18,red);box(0,.3,.10,.41,.40,.015,white);box(.17,.18,.119,.035,.055,.015,dark);box(0,.36,.119,.26,.025,.008,red);box(0,.28,.119,.26,.012,.008,steel);break;
  case 'ev-charger': box(0,.30,0,.30,.60,.15,dark);box(0,.38,.085,.23,.20,.015,white);box(0,.41,.098,.13,.075,.01,blue);box(.19,.18,0,.045,.34,.035,dark);cyl(.1,.02,0,.045,.22,dark,'x');break;
  }
- return new Float32Array(data);
+ const mesh=new Float32Array(data);meshCache.set(style,mesh);return mesh.slice();
 }
 function inRing(p,r){let inside=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const a=r[i],b=r[j];if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])inside=!inside;}return inside;}
 const inShape=(p,s)=>inRing(p,s.p)&&!(s.holes||[]).some(h=>inRing(p,h));
 const distanceSegment=(p,s)=>{const dx=s.b[0]-s.a[0],dz=s.b[1]-s.a[1],v=Math.max(0,Math.min(1,((p[0]-s.a[0])*dx+(p[1]-s.a[1])*dz)/(dx*dx+dz*dz||1)));const q=[s.a[0]+dx*v,s.a[1]+dz*v];return {q,d:Math.hypot(q[0]-p[0],q[1]-p[1]),angle:Math.atan2(dx,dz)};};
-/** Approximate, collision-spaced display positions. No parent coordinates or PLAN changes. */
-export function placeEquipment(plan,objects,surfaces){
- const areas=new Map(plan.assets.map(a=>[a.id,a])),floors=new Map(plan.floors.map(f=>[f.id,f]));
- const occupied=[],placed=[],unplaced=[];
- for(const o of objects.slice(0,400)){
-  const a=areas.get(o.locationId),t=typeById.get(o.style),f=a&&floors.get(a.floor);if(!a||!t||!f){unplaced.push(o.id);continue;}
-  const shape=surfaces?.byId?.get(a.id),slabs=plan.shapes.filter(s=>s.f===a.floor&&s.kind==='slab');
-  const walls=plan.segments.filter(s=>s.f===a.floor&&['partition','facade','core-wall'].includes(s.kind));
-  const anchor=[a.pos[0],a.pos[1]],candidates=[];
-  for(let ring=0;ring<12;ring++)for(let i=0;i<(ring?20:1);i++){
-   const angle=(i/20+(o.slot||0)*.17)*Math.PI*2,rad=ring*.38,p=[anchor[0]+Math.cos(angle)*rad,anchor[1]+Math.sin(angle)*rad];
-   if(!slabs.some(s=>inShape(p,s))||shape&&!shape.contains(p))continue;
-   const near=walls.map(w=>({...distanceSegment(p,w),w})).sort((x,y)=>x.d-y.d)[0];
-   const radius=['tank','pump','boiler','bench'].includes(o.style)?.62:.29;
-   if(near?.d<radius*.6||occupied.some(v=>v.floor===a.floor&&Math.hypot(p[0]-v.p[0],p[1]-v.p[1])<radius+v.r))continue;
-   if(radius>.5&&![[radius,0],[-radius,0],[0,radius],[0,-radius]].every(([x,z])=>slabs.some(s=>inShape([p[0]+x,p[1]+z],s))))continue;
-   const score=t.mount==='wall'?(near?.d||4)+rad*.13:rad+(t.mount==='ceiling'?0:.2);
-   candidates.push({p,near,radius,score});
-  }
-  candidates.sort((x,y)=>x.score-y.score);const c=candidates[0];if(!c){unplaced.push(o.id);continue;}
-  const angle=t.mount==='wall'&&c.near?Math.atan2(c.p[0]-c.near.q[0],c.p[1]-c.near.q[1]):.15;
-  occupied.push({floor:a.floor,p:c.p,r:c.radius});placed.push({...o,floor:a.floor,floorY:f.y,x:c.p[0],z:c.p[1],rotation:angle,mount:t.mount,placement:'SCHEMATIC DEMONSTRATION POSITION - not a measured installation point'});
- }
- return {placed,unplaced};
+/** Schematic equipment must fit its saved named area. Missing cupboards are never invented. */
+export function compatibleLocation(style,a){
+ if(!a||!['space','riser','stairs'].includes(a.type)||/apartment|bedroom|private|living\s*\/|\bflat\b/i.test(a.title))return false;
+ const rule={
+  'electrical-board':/sub.?station|electrical|meter|switch|riser|plant/i,meter:/sub.?station|electrical|meter|riser|plant/i,
+  battery:/sub.?station|electrical|battery|plant/i,'lift-controller':/lift.*(machine|plant|control)|(machine|plant).*lift/i,
+  pump:/plant|pump|water/i,tank:/plant|tank|water/i,boiler:/plant|boiler|heating/i,'leak-sensor':/plant|pump|water|riser/i,
+  valve:/riser|plant|water|service/i,bin:/bin|refuse|waste/i,recycling:/bin|refuse|waste/i,
+  bench:/community|lounge|garden|grounds|shared room/i,'ev-charger':/parking|garage|charging/i,
+  'alarm-panel':/entrance|lobby|control|concierge/i,'information-box':/entrance|lobby|concierge/i,
+  radiator:/community|lounge|corridor/i
+ }[style];return !rule||rule.test(a.title);
 }
-export function buildEquipmentGroups(placements,{size=1.5,capFloor=null,wallHeight=2.8}={}){
+export function meshBounds(data){const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(let i=0;i<data.length;i+=10)for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],data[i+j]);hi[j]=Math.max(hi[j],data[i+j]);}return {lo,hi};}
+function footprint(x,z,w,d,angle){const c=Math.cos(angle),s=Math.sin(angle);return [[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(([u,v])=>[x+u*c+v*s,z-u*s+v*c]);}
+export function placeEquipment(plan,objects,surfaces,{size=1}={}){
+ if(![1,1.5,2].includes(size))throw Error('Unsupported symbol scale.');
+ const areas=new Map(plan.assets.map(a=>[a.id,a])),floors=new Map(plan.floors.map(f=>[f.id,f])),occupied=[],placed=[],unplaced=[],reasons={},byFloor=new Map();
+ const reject=(id,reason)=>{unplaced.push(id);reasons[id]=reason;};
+ for(const o of objects.slice(0,400)){
+  const a=areas.get(o.locationId),t=typeById.get(o.style),f=a&&floors.get(a.floor);
+  if(!a||!t||!f){reject(o.id,'Source location unavailable');continue;}
+  if(!compatibleLocation(o.style,a)){reject(o.id,'No compatible named room or cupboard at the saved location');continue;}
+  const region=surfaces?.byId?.get(a.id);
+  if(!region||a.type==='stairs'){reject(o.id,'A bounded usable equipment area is not established');continue;}
+  if(!byFloor.has(f.id))byFloor.set(f.id,{
+   slabs:plan.shapes.filter(s=>s.f===f.id&&s.kind==='slab'),
+   walls:plan.segments.filter(s=>s.f===f.id&&['partition','facade','core-wall'].includes(s.kind)),
+   openings:plan.segments.filter(s=>s.f===f.id&&['door','internal-door','window'].includes(s.kind)),furniture:(plan.objects||[]).filter(p=>p.f===f.id)
+  });
+  const {slabs,walls,openings,furniture}=byFloor.get(f.id),bounds=meshBounds(equipmentMesh(o.style)),w=(bounds.hi[0]-bounds.lo[0])*size,d=(bounds.hi[2]-bounds.lo[2])*size,h=(bounds.hi[1]-bounds.lo[1])*size;
+  const solid=p=>slabs.some(s=>inShape(p,s)),peers=(region.sharedIds||[]).map(id=>areas.get(id)).filter(Boolean);
+  const inRegion=p=>region.contains(p)&&(!peers.length||peers.every(b=>b.id===a.id||Math.hypot(p[0]-a.pos[0],p[1]-a.pos[1])+.12<Math.hypot(p[0]-b.pos[0],p[1]-b.pos[1])));
+  const candidates=[];
+  function consider(p,angle,backing=null){
+   if(Math.hypot(p[0]-a.pos[0],p[1]-a.pos[1])>(a.type==='riser'?1.1:4))return;
+   const n=[Math.sin(angle),Math.cos(angle)],probe=backing?[p[0]+n[0]*.22,p[1]+n[1]*.22]:p;if(!inRegion(probe))return;
+   const corners=footprint(p[0],p[1],w+.04,d+.04,angle);if(!corners.every(solid))return;
+   const ceiling=backing?Math.min(3.1,backing.y+backing.h-f.y):2.65;
+   const base=t.mount==='ceiling'?ceiling-h-.025:t.mount==='wall'?Math.min(/emergency-light|sounder|exit-sign|smoke-vent|cctv/.test(o.style)?1.9:1.1,ceiling-h-.04):.035;
+   if(!Number.isFinite(base)||base<.025)return;const low=f.y+base,high=low+h,r=Math.hypot(w,d)/2;
+   if(walls.some(s=>s!==backing&&distanceSegment(p,s).d<(s.w||.15)/2+.02&&low<s.y+s.h&&high>s.y))return;
+   if(corners.some(c=>walls.some(s=>s!==backing&&distanceSegment(c,s).d<(s.w||.15)/2+.02&&low<s.y+s.h&&high>s.y)))return;
+   if(openings.some(s=>distanceSegment(p,s).d<r+.25&&low<s.y+s.h&&high>s.y))return;
+   if(occupied.some(q=>q.floor===f.id&&low<q.high+.08&&high>q.low-.08&&Math.hypot(p[0]-q.x,p[1]-q.z)<r+q.r+.12))return;
+   if(base<1.9&&furniture.some(q=>Math.hypot(p[0]-q.p[0],p[1]-q.p[1])<r+Math.min(q.w,q.d)/2+.05))return;
+   candidates.push({p,angle,base,low,high,r,score:Math.hypot(p[0]-a.pos[0],p[1]-a.pos[1])+(t.mount==='floor'?Math.min(...walls.map(s=>distanceSegment(p,s).d),4)*.3:0),backing});
+  }
+  if(t.mount==='wall'){
+   for(const wall of walls){const dx=wall.b[0]-wall.a[0],dz=wall.b[1]-wall.a[1],length=Math.hypot(dx,dz);if(length<w+.12||wall.h<h+.1)continue;
+    const start=(w/2+.06)/length,end=1-start,steps=Math.max(1,Math.ceil((length-w)/.35));
+    for(let k=0;k<=steps;k++)for(const side of [-1,1]){const u=start+(end-start)*k/steps,n=[-dz/length*side,dx/length*side],gap=(wall.w||.15)/2+d/2+.025;consider([wall.a[0]+dx*u+n[0]*gap,wall.a[1]+dz*u+n[1]*gap],Math.atan2(n[0],n[1]),wall);}
+   }
+  }else{
+   for(let row=-7;row<=7;row++)for(let col=-7;col<=7;col++){const p=[a.pos[0]+col*.45,a.pos[1]+row*.45],near=walls.map(s=>({s,...distanceSegment(p,s)})).sort((x,y)=>x.d-y.d)[0];consider(p,near?Math.atan2(p[0]-near.q[0],p[1]-near.q[1]):0);}
+  }
+  candidates.sort((a,b)=>a.score-b.score||a.p[0]-b.p[0]||a.p[1]-b.p[1]);const c=candidates[0];
+  if(!c){reject(o.id,'Insufficient clear space or suitable wall backing in the named area');continue;}
+  occupied.push({floor:f.id,x:c.p[0],z:c.p[1],low:c.low,high:c.high,r:c.r});
+  placed.push({...o,floor:f.id,floorY:f.y,x:c.p[0],z:c.p[1],baseY:c.base,rotation:c.angle,mount:t.mount,scale:size,placement:region.sharedIds?.length?'SCHEMATIC / local to area label; separating boundary unresolved':'SCHEMATIC / within named space; NOT surveyed',backing:c.backing?{a:[...c.backing.a],b:[...c.backing.b],w:c.backing.w}:null});
+ }
+ return {placed,unplaced,reasons};
+}
+export function buildEquipmentGroups(placements,{size=1}={}){
  if(![1,1.5,2].includes(size))throw Error('Unsupported symbol scale.');
  return placements.map(p=>{
-  const src=equipmentMesh(p.style),out=new Float32Array(src.length);let maxY=0,minY=0;
-  for(let i=1;i<src.length;i+=10){maxY=Math.max(maxY,src[i]);minY=Math.min(minY,src[i]);}
-  const cap=String(capFloor)===String(p.floor)?wallHeight:2.8;
-  const factor=Math.min(size,Math.max(.1,(cap-.09)/(maxY-minY||1)));
-  const physicalY=p.mount==='ceiling'?2.45:p.mount==='wall'?1.1:0.03;
-  const baseY=Math.max(.025,Math.min(physicalY,cap-(maxY-minY)*factor-.04));
-  const cos=Math.cos(p.rotation),sin=Math.sin(p.rotation);
-  for(let i=0;i<src.length;i+=10){out[i]=p.x+factor*(src[i]*cos+src[i+2]*sin);out[i+1]=p.floorY+baseY+factor*(src[i+1]-minY);out[i+2]=p.z+factor*(-src[i]*sin+src[i+2]*cos);out[i+3]=src[i+3]*cos+src[i+5]*sin;out[i+4]=src[i+4];out[i+5]=-src[i+3]*sin+src[i+5]*cos;for(let k=6;k<10;k++)out[i+k]=src[i+k];}
-  const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];for(let i=0;i<out.length;i+=10)for(let j=0;j<3;j++){lo[j]=Math.min(lo[j],out[i+j]);hi[j]=Math.max(hi[j],out[i+j]);}
-  return {name:'DEMO '+p.style+' '+p.id,kind:'demo-equipment',floor:p.floor,basis:'illustrative-equipment',demoId:p.id,locationId:p.locationId,vertices:out,data:out,count:out.length/10,bounds:{lo,hi},anchor:lo.map((v,i)=>(v+hi[i])/2)};
+  const src=equipmentMesh(p.style),out=new Float32Array(src.length),b=meshBounds(src),factor=size,baseY=p.baseY??(p.mount==='ceiling'?2.5-(b.hi[1]-b.lo[1])*factor:p.mount==='wall'?1.1:.035),cos=Math.cos(p.rotation),sin=Math.sin(p.rotation),cx=(b.lo[0]+b.hi[0])/2,cz=(b.lo[2]+b.hi[2])/2;
+  for(let i=0;i<src.length;i+=10){const x=src[i]-cx,z=src[i+2]-cz;out[i]=p.x+factor*(x*cos+z*sin);out[i+1]=p.floorY+baseY+factor*(src[i+1]-b.lo[1]);out[i+2]=p.z+factor*(-x*sin+z*cos);out[i+3]=src[i+3]*cos+src[i+5]*sin;out[i+4]=src[i+4];out[i+5]=-src[i+3]*sin+src[i+5]*cos;for(let k=6;k<10;k++)out[i+k]=src[i+k];}
+  const bounds=meshBounds(out);return {name:'DEMO '+p.style+' '+p.id,kind:'demo-equipment',floor:p.floor,basis:'illustrative-equipment',demoId:p.id,locationId:p.locationId,vertices:out,data:out,count:out.length/10,bounds,anchor:bounds.lo.map((v,i)=>(v+bounds.hi[i])/2)};
  });
 }
 /** Export only the fictional layer. The original building/export remains untouched. */
